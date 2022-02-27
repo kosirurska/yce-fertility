@@ -32,7 +32,9 @@ data <- raw_data %>%
   select_all(tolower) %>%
   rename_with(~gsub("0", "_", .x, fixed = TRUE)) %>%
   rename_with(~gsub("[", "_", .x, fixed = TRUE)) %>%
-  rename_with(~gsub("]", "", .x, fixed = TRUE))
+  rename_with(~gsub("]", "", .x, fixed = TRUE)) %>%
+  filter(consent == 1) %>%
+  filter(check == 4)
 
 data$startdate<-as.Date(data$startdate, '%Y-%m-%d')## Keep just day, month, year
 ```
@@ -41,9 +43,10 @@ data$startdate<-as.Date(data$startdate, '%Y-%m-%d')## Keep just day, month, year
 
 * Visits to the front page of the survey: `r nrow(raw_data)`.
 
-* Number of participants who consented to participate: `r sum(raw_data$consent, na.rm = TRUE)`.
+* Number of participants who consented to participate: `r data %>% nrow()`
+`r sum(raw_data$consent, na.rm = TRUE) - raw_data %>% filter(check != 4) %>% nrow()`.
 
-* Number of participants who completed the survey: `r raw_data %>% filter(lastpage %in% c(9:10)) %>% nrow()` or `r round((raw_data %>% filter(lastpage %in% c(9:10)) %>% nrow())/sum(raw_data$consent, na.rm = TRUE)*100,1)`% of those who consented.
+* Number of participants who completed the survey: `r raw_data %>% filter(lastpage %in% c(9:10)) %>% nrow()` or `r round((raw_data %>% filter(lastpage %in% c(9:10)) %>% nrow())/(data %>% nrow)*100,1)`% of those who consented.
 
 ## Entry point
 
@@ -77,7 +80,7 @@ data %>%
                               "Instagram",
                               "Twitter",
                               "LinkedIn",
-                              "Other",
+                              "Other social media",
                               "YCE Newsletter",
                               "Email",
                               "Patient org.",
