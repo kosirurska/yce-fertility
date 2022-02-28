@@ -44,7 +44,7 @@ data$startdate<-as.Date(data$startdate, '%Y-%m-%d')## Keep just day, month, year
 * Visits to the front page of the survey: `r nrow(raw_data)`.
 
 * Number of participants who consented to participate: `r data %>% nrow()`
-`r sum(raw_data$consent, na.rm = TRUE) - raw_data %>% filter(check != 4) %>% nrow()`.
+<!-- `r sum(raw_data$consent, na.rm = TRUE) - raw_data %>% filter(check != 4) %>% nrow()`. -->
 
 * Number of participants who completed the survey: `r raw_data %>% filter(lastpage %in% c(9:10)) %>% nrow()` or `r round((raw_data %>% filter(lastpage %in% c(9:10)) %>% nrow())/(data %>% nrow)*100,1)`% of those who consented.
 
@@ -106,6 +106,27 @@ data %>%
          prop = round(prop, 2)) %>%
   dplyr::select(-sum) %>%
   kable(col.names = c("Country code", "N", "Proportion")) %>%
+  kable_styling("hover", full_width = FALSE, latex_options = "HOLD_position")
+```
+
+## Sex distribution
+
+* 1 = Male
+* 2 = Female
+* 3 = Other
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+data %>%
+  dplyr::select(dem_sex) %>%
+  drop_na() %>%
+  group_by(dem_sex) %>%
+  count() %>%
+  ungroup() %>%
+  mutate(sum = sum(n),
+         prop = n/sum,
+         prop = round(prop, 2)) %>%
+  dplyr::select(-sum) %>%
+  kable(col.names = c("Sexe", "N", "Proportion")) %>%
   kable_styling("hover", full_width = FALSE, latex_options = "HOLD_position")
 ```
 
