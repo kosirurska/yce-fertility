@@ -126,7 +126,7 @@ data %>%
          prop = n/sum,
          prop = round(prop, 2)) %>%
   dplyr::select(-sum) %>%
-  kable(col.names = c("Sexe", "N", "Proportion")) %>%
+  kable(col.names = c("Sex", "N", "Proportion")) %>%
   kable_styling("hover", full_width = FALSE, latex_options = "HOLD_position")
 ```
 
