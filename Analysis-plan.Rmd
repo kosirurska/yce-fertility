@@ -1,0 +1,100 @@
+---
+title: "YCE Fertility preservation: Survey analysis plan"
+output: pdf_document
+date: "Last update: `r Sys.Date()`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(readr)
+library(here)
+library(psych)
+library(english)
+library(stringr)
+library(tableone)
+library(kableExtra)
+library(patchwork)
+library(scales)
+library(ggridges)
+library(plotly)
+library(patchwork)
+library(haven)
+```
+
+```{r data, echo=FALSE, message=FALSE, warning=FALSE}
+# Read in the clean csv file
+raw_data <- read_csv("results.csv")
+
+raw_data$startdate<-as.Date(raw_data$startdate, '%Y-%m-%d')
+
+data <- raw_data %>%
+  select_all(tolower) %>%
+  rename_with(~gsub("0", "_", .x, fixed = TRUE)) %>%
+  rename_with(~gsub("[", "_", .x, fixed = TRUE)) %>%
+  rename_with(~gsub("]", "", .x, fixed = TRUE)) %>%
+  filter(consent == 1) %>%
+  filter(check == 4)
+
+data$startdate<-as.Date(data$startdate, '%Y-%m-%d')## Keep just day, month, year
+```
+
+## Study information
+
+## Study design
+
+This is a cross-sectional online survey . Data collection began on `r min(raw_data$startdate, na.rm = TRUE)`
+
+## Analyses
+
+### Descriptive aims
+
+### Exploratory aims
+
+- stratify any descriptive analyses by country
+
+
+## Entry point
+
+Participants have reported that they most commonly heard about the survey from the following sources:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+data %>%
+  dplyr::select(entry) %>%
+  group_by(entry) %>%
+  drop_na() %>%
+  count() %>%
+  ungroup() %>%
+  mutate(sum = sum(n),
+         prop = n/sum*100) %>%
+  mutate(entry = as.factor(entry),
+         entry = fct_reorder(entry, prop)) %>%
+  ggplot(aes(x = prop, y = entry, fill = entry)) + 
+  geom_col() + 
+  geom_text(aes(label = paste0("N = ", n), x = prop+5)) +
+  labs(title = " ", 
+       x = "Proportion (%)",
+       y = " ") + 
+  xlim(0, 100) +
+  theme_classic(base_size = 13) +
+  theme(legend.position = "none",
+        strip.text = element_text(face = 'bold'),
+        panel.grid.major.x = element_line()) +
+  scale_y_discrete(breaks = c("1", "2", "3", "4", "5", "6", "7", "8",
+                              "9", "10"),
+                   labels = c("Facebook",
+                              "Instagram",
+                              "Twitter",
+                              "LinkedIn",
+                              "Other social media",
+                              "YCE Newsletter",
+                              "Email",
+                              "Patient org.",
+                              "Friend",
+                              "Other"))
+```
+
+\newpage 
+
+
+This document was prepared by UK - [reach me with any questions/comments](mailto:dr.urska.kosir@gmail.com)!
