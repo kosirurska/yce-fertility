@@ -94,6 +94,8 @@ data %>%
 
 To date, participants have been recruited from the following countries. NB: The codes are ISO-3 country codes; [source](https://www.iban.com/country-codes).
 
+OTH = Other; individuals may either wish not to respond, or have a nationality of an unlisted country
+
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
 data %>%
   dplyr::select(dem_nationality) %>%
