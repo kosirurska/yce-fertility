@@ -111,6 +111,45 @@ data %>%
   kable_styling("hover", full_width = FALSE, latex_options = "HOLD_position")
 ```
 
+## Region groupings
+
+The clusters are based on Ferrira et al. 2018 analyses of healthcare indices across the EU countries. To learn more about the clustering you can access the [pre-registration](https://osf.io/xafhz/). The figure below shows the clusters.
+The column "remaining" indicates how many participants are needed in order to achieve the sample size required for comparative analyses.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+data %>%
+  dplyr::select(dem_nationality) %>%
+  drop_na() %>%
+  mutate(dem_region = case_when(dem_nationality == "AUT" | dem_nationality == "DEU" ~ 1,
+                                dem_nationality == "BEL" | dem_nationality == "LUX" |
+                                dem_nationality == "NLD" | dem_nationality == "FIN" |
+                                dem_nationality == "FRA" | dem_nationality == "IRL" |
+                                dem_nationality == "SWE" | dem_nationality == "GBR" ~ 2,
+                                dem_nationality == "CYP" | dem_nationality == "GRC" |
+                                dem_nationality == "ITA" | dem_nationality == "MLT" |
+                                dem_nationality == "PRT" | dem_nationality == "ESP" ~ 3,
+                                dem_nationality == "BGR" | dem_nationality == "HUN" |
+                                dem_nationality == "LVA" | dem_nationality == "LTU" |
+                                dem_nationality == "SVK" | dem_nationality == "ROU" ~ 4,
+                                dem_nationality == "HRV" | dem_nationality == "CZE" |
+                                dem_nationality == "EST" | dem_nationality == "POL" |
+                                dem_nationality == "SVN" ~ 5)) %>%
+  mutate(dem_region = replace_na(dem_region, 6)) %>%
+  group_by(dem_region) %>%
+  count() %>%
+  mutate(dif = case_when(n < 40 ~ 40-n)) %>%
+  kableExtra::kable(col.names = c("Cluster #", "N collected", "Remaining")) %>%
+  kable_styling("hover", full_width = FALSE, latex_options = "HOLD_position")
+```
+
+\newpage
+
+```{r fig-1, echo = FALSE, fig.cap = "EU country clusters for comparative analyses based on Ferreira et al. 2018"}
+knitr::include_graphics("clusters.pdf")
+
+
+```
+
 ## Sex distribution
 
 * 1 = Male
