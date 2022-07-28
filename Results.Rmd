@@ -1,0 +1,835 @@
+---
+title: "YCE Fertility preservation: Survey results"
+output: pdf_document
+date: "Last update: `r Sys.Date()`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(tidymodels)
+library(readr)
+library(here)
+library(psych)
+library(english)
+library(stringr)
+library(tableone)
+library(kableExtra)
+library(patchwork)
+library(scales)
+library(ggridges)
+library(plotly)
+library(patchwork)
+library(haven)
+library(table1)
+library(gt)
+library(skimr)
+library(rcompanion)
+library(rstatix)
+library(car)
+library(multcomp)
+library(effects)
+library(pastecs)
+```
+
+```{r data, echo=FALSE, message=FALSE, warning=FALSE}
+# Read in the clean csv file
+raw_data <- read_csv("results.csv")
+
+raw_data$startdate<-as.Date(raw_data$startdate, '%Y-%m-%d')
+
+data <- raw_data %>%
+  select_all(tolower) %>%
+  rename_with(~gsub("0", "_", .x, fixed = TRUE)) %>%
+  rename_with(~gsub("[", "_", .x, fixed = TRUE)) %>%
+  rename_with(~gsub("]", "", .x, fixed = TRUE)) %>%
+  filter(consent == 1) %>% #filter for consent
+  filter(check == 4) %>% #filter for bot check
+  filter(dem_age %in% c(18:65)) %>% #filter for age
+  filter(lastpage %in% c(9:10)) %>% #filter for completion
+  mutate(med_cancerage = replace(med_cancerage, med_cancerage == 2010, 22)) %>% #correct the mistake where person inserted the year of diagnosis, the age was caluculated using the current age
+  rename(whoqol_7_7 = whoqol_7_whoqolbref22,
+         whoqol_7_8 = whoqol_7_whoqolbref23,
+         whoqol_7_9 = whoqol_7_whoqolbref24,
+         whoqol_7_10 = whoqol_7_whoqolbref25) %>%
+  rowwise() %>%
+  mutate(phq_sq__1 = phq_sq__1-1, 
+         phq_sq__2 = phq_sq__2-1,
+         phq_sq__3 = phq_sq__3-1,
+         phq_sq__4 = phq_sq__4-1,
+         phq_sum = sum(phq_sq__1, phq_sq__2, phq_sq__3, phq_sq__4, na.rm = FALSE),
+         phq_anxiety = sum(phq_sq__1, phq_sq__2, na.rm = FALSE),
+         phq_depression = sum(phq_sq__3, phq_sq__4, na.rm = FALSE),
+         whoqol_total = sum(whoqol_1_1, whoqol_2_2, #1,2
+                            whoqol_3_1, whoqol_3_2, whoqol_3_3, whoqol_3_4, #3,4,5,6
+                            whoqol_4_1, whoqol_4_2, whoqol_4_3, #7,8,9
+                            whoqol_5_1, whoqol_5_2, whoqol_5_3, whoqol_5_4, whoqol_5_5, #10,11,12,13,14
+                            whoqol_6_1, #15
+                            whoqol_7_1, whoqol_7_2, whoqol_7_3, whoqol_7_4, whoqol_7_5,#16,17,18,19,20
+                            whoqol_7_6, whoqol_7_7, whoqol_7_8, whoqol_7_9, whoqol_7_10,#21,22,23,24,25
+                            whoqol_8_1, na.rm = FALSE), #26
+         whoqol_physical = sum(whoqol_3_1, whoqol_3_2, whoqol_5_1, whoqol_6_1, 
+                               whoqol_7_1, whoqol_7_2, whoqol_7_3, na.rm = FALSE),
+         whoqol_psych = sum(whoqol_3_3, whoqol_3_4, whoqol_4_1, whoqol_5_2, whoqol_7_4, na.rm = FALSE),
+         whoqol_social = sum(whoqol_7_5, whoqol_7_6, whoqol_7_7, na.rm = FALSE),
+         whoqol_environ = sum(whoqol_4_2, whoqol_4_3, whoqol_5_3, whoqol_5_4, whoqol_5_5,
+                              whoqol_7_8, whoqol_7_9, whoqol_7_10, na.rm = FALSE)
+         ) %>%
+  mutate(dem_cluster = case_when(dem_nationality == "AUT" | dem_nationality == "DEU" ~ 1,
+                                dem_nationality == "BEL" | dem_nationality == "LUX" |
+                                dem_nationality == "NLD" | dem_nationality == "FIN" |
+                                dem_nationality == "FRA" | dem_nationality == "IRL" |
+                                dem_nationality == "SWE" | dem_nationality == "GBR" ~ 2,
+                                dem_nationality == "CYP" | dem_nationality == "GRC" |
+                                dem_nationality == "ITA" | dem_nationality == "MLT" |
+                                dem_nationality == "PRT" | dem_nationality == "ESP" ~ 3,
+                                dem_nationality == "BGR" | dem_nationality == "HUN" |
+                                dem_nationality == "LVA" | dem_nationality == "LTU" |
+                                dem_nationality == "SVK" | dem_nationality == "ROU" ~ 4,
+                                dem_nationality == "HRV" | dem_nationality == "CZE" |
+                                dem_nationality == "EST" | dem_nationality == "POL" |
+                                dem_nationality == "SVN" ~ 5)) %>%
+  mutate(dem_cluster = replace_na(dem_cluster, 6))
+
+data$startdate<-as.Date(data$startdate, '%Y-%m-%d')## Keep just day, month, year
+
+# questions <- data %>%
+#   dplyr::select(preference_question) %>%
+#   drop_na()
+
+cluster_names <- c(
+  "1" = "Cluster 1",
+  "2" = "Cluster 2",
+  "3" = "Cluster 3",
+  "4" = "Cluster 4",
+  "5" = "Cluster 5",
+  "6" = "Cluster 6"
+)
+```
+
+# DATA SUMMARIES and ANALYSES
+
+### Sample: Demographic and medical information
+
+* This update covers the period between `r min(raw_data$startdate, na.rm = TRUE)` and `r max(raw_data$startdate, na.rm=TRUE)`.
+
+* Visits to the front page of the survey: `r nrow(raw_data)`.
+
+* Number of participants who consented to participate: `r sum(raw_data$consent, na.rm = TRUE) - raw_data %>% filter(check != 4) %>% nrow()`.
+
+* Number of participants who completed the survey: `r raw_data %>% filter(lastpage %in% c(9:10)) %>% nrow()` or `r round((raw_data %>% filter(lastpage %in% c(9:10)) %>% nrow())/(sum(raw_data$consent, na.rm = TRUE) - raw_data %>% filter(check != 4) %>% nrow())*100,1)`% of those who consented.
+
+### Table 1: Demographic information
+
+```{r echo=FALSE, warning=FALSE}
+table_data_1 <- data %>%
+  dplyr::select(dem_age, dem_sex, dem_religion, dem_edu, dem_relationship, dem_child) %>%
+  mutate(dem_sex = factor(dem_sex,
+                          levels = c(1, 2, 3, 999),
+                          labels = c("Male", "Female", "Other", "Prefer not to answer")),
+         dem_religion = factor(dem_religion, 
+                               levels = c(0:8, 999),
+                               labels = c("None", "Roman Chatholic", "Orthodox", "Protestant", "Jewish", "Hindu", "Muslim", "Buddhist", "Other", "Prefer not to answer")),
+         dem_edu = factor(dem_edu,
+                          levels = c(0:6,999),
+                          labels = c("Never been", "Elementary school", "High School", "Higher degree, below university", "Bachelor's", "Master's", "Doctorate/PhD", "Prefer not to answer")),
+         dem_relationship = factor(dem_relationship,
+                          levels = c(0:3, 999),
+                          labels = c("Single", "In a relationship", "Married/Common-Law", "Separated/Divorced","Prefer not to answer")),
+         dem_child = factor(dem_child, 
+                               levels = c(0, 1, 999),
+                               labels = c("Yes", "No", "Prefer not to answer")))
+
+
+label(table_data_1$dem_sex) <- "Sex"
+label(table_data_1$dem_age) <- "Age"
+label(table_data_1$dem_edu) <- "Education"
+label(table_data_1$dem_religion) <- "Religious orientation"
+label(table_data_1$dem_relationship) <- "Relationship status"
+label(table_data_1$dem_child) <- "Have children?"
+
+units(table_data_1$dem_age) <- "years"
+
+table1(~ dem_age + dem_sex + dem_religion + dem_edu + dem_relationship + dem_child,
+       data = table_data_1)
+```
+
+*NOTE*: The number in the table might be lower than the number of complete responses reported on the front page. This is because the analyses are limited to participants who are between 18 and 65 years of age, have correctly consented and responded to the bot check question.
+
+\newpage
+### Nationalities represented
+
+To date, participants have been recruited from the following countries. NB: The codes are ISO-3 country codes; [source](https://www.iban.com/country-codes).
+
+OTH = Other; individuals may either wish not to respond, or have a nationality of an unlisted country
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+data %>%
+  dplyr::select(dem_nationality) %>%
+  drop_na() %>%
+  group_by(dem_nationality) %>%
+  count() %>%
+  ungroup() %>%
+  mutate(sum = sum(n),
+         prop = n/sum,
+         prop = round(prop, 2)) %>%
+  dplyr::select(-sum) %>%
+  kable(col.names = c("Country code", "N", "Proportion")) %>%
+  kable_styling("hover", full_width = FALSE, latex_options = "HOLD_position")
+```
+
+### Region groupings
+
+The clusters are based on Ferrira et al. 2018 analyses of healthcare indices across the EU countries. To learn more about the clustering you can access the [pre-registration](https://osf.io/xafhz/). The figure below shows the clusters.
+The column "remaining" indicates how many participants are needed in order to achieve the sample size required for comparative analyses.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+data %>%
+  dplyr::select(dem_nationality) %>%
+  drop_na() %>%
+  mutate(dem_region = case_when(dem_nationality == "AUT" | dem_nationality == "DEU" ~ 1,
+                                dem_nationality == "BEL" | dem_nationality == "LUX" |
+                                dem_nationality == "NLD" | dem_nationality == "FIN" |
+                                dem_nationality == "FRA" | dem_nationality == "IRL" |
+                                dem_nationality == "SWE" | dem_nationality == "GBR" ~ 2,
+                                dem_nationality == "CYP" | dem_nationality == "GRC" |
+                                dem_nationality == "ITA" | dem_nationality == "MLT" |
+                                dem_nationality == "PRT" | dem_nationality == "ESP" ~ 3,
+                                dem_nationality == "BGR" | dem_nationality == "HUN" |
+                                dem_nationality == "LVA" | dem_nationality == "LTU" |
+                                dem_nationality == "SVK" | dem_nationality == "ROU" ~ 4,
+                                dem_nationality == "HRV" | dem_nationality == "CZE" |
+                                dem_nationality == "EST" | dem_nationality == "POL" |
+                                dem_nationality == "SVN" ~ 5)) %>%
+  mutate(dem_region = replace_na(dem_region, 6)) %>%
+  group_by(dem_region) %>%
+  count() %>%
+  mutate(dif = case_when(n < 40 ~ 40-n)) %>%
+  kableExtra::kable(col.names = c("Cluster #", "N collected", "Remaining")) %>%
+  kable_styling("hover", full_width = FALSE, latex_options = "HOLD_position")
+```
+
+
+```{r fig-1, echo = FALSE, fig.cap = "EU country clusters for comparative analyses based on Ferreira et al. 2018"}
+knitr::include_graphics("clusters.pdf")
+
+
+```
+
+\newpage
+### Table 2: Medical information
+
+```{r echo=FALSE, warning=FALSE}
+table_data_2 <- data %>%
+  dplyr::select(med_cancerage, med_cancerdx, contains("med_cancertx"), med_hospital, med_wheretx, med_currenttx, med_txcomplete, med_txinfertility) %>%
+  mutate(med_cancertx_oth = case_when(med_cancertx_4 == "Y" | med_cancertx_5 == "Y" | med_cancertx_6 == "Y" ~ "Y")) %>%
+  dplyr::select(-med_cancertx_4, -med_cancertx_5, -med_cancertx_6) %>%
+  replace_na(list(med_cancertx_1 = 0, med_cancertx_2 = 0, med_cancertx_3 = 0, med_cancertx_7 = 0, med_cancertx_oth = 0)) %>%
+  mutate(med_treatment = case_when(med_cancertx_1 == "Y" & med_cancertx_2 == 0 & med_cancertx_3 == 0 & med_cancertx_7 == 0 & med_cancertx_oth == 0  ~ "Surgery",
+                                   med_cancertx_1 == 0 & med_cancertx_2 == "Y" & med_cancertx_3 == 0 & med_cancertx_7 == 0 & med_cancertx_oth == 0  ~ "Chemotherapy",
+                                   med_cancertx_1 == 0 & med_cancertx_2 == 0 & med_cancertx_3 == "Y" & med_cancertx_7 == 0 & med_cancertx_oth == 0  ~ "Radiotherapy",
+                                   med_cancertx_1 == 0 & med_cancertx_2 == "Y" & med_cancertx_3 == "Y" & med_cancertx_7 == 0 & med_cancertx_oth == 0  ~ "Chemo + Radio",
+                                    med_cancertx_1 == "Y" & med_cancertx_2 == "Y" & med_cancertx_3 == "Y" & med_cancertx_7 == 0 & med_cancertx_oth == 0  ~ "Chemo + Radio + Surgery",
+                                     med_cancertx_7 == "Y" ~ "Transplant",
+                                    med_cancertx_1 == 0 & med_cancertx_2 == 0 & med_cancertx_3 == 0 & med_cancertx_7 == 0 & med_cancertx_oth == "Y"  ~ "Other"
+                                   )) %>%
+  dplyr::select(-contains("med_cancertx")) %>%
+  mutate(med_hospital = factor(med_hospital,
+                          levels = c(1:4),
+                          labels = c("Regional/Local clinic", "Regional hospital w/ University", "Major city hospital w/ University", "Major city hospital, not Univeristy")),
+         med_wheretx = factor(med_wheretx,
+                               levels = c(0, 1, 2, 3, 999),
+                               labels = c("Pediatric ward", "Young adult ward", "Adult ward", "Mixed service", "Prefer not to answer")),
+         med_currenttx = factor(med_currenttx,
+                          levels = c(0, 1),
+                          labels = c("No", "Yes")),
+         med_txcomplete = factor(med_txcomplete,
+                                 levels = c(0, 1, 2, 3, 4, 5),
+                                 labels = c("Less than 6mo ago", "6 - 12 mo ago", "1 - 2 years ago", "2 - 5 years ago", "5 - 10 years ago", "More than 10 years ago")),
+         med_txinfertility = factor(med_txinfertility,
+                                    levels = c(0, 1, 2),
+                                    labels = c("No", "Yes", "Don't know/Don't remember")))
+
+label(table_data_2$med_cancerage) <- "Age at diagnosis"
+label(table_data_2$med_cancerdx) <- "Cancer diagnosis"
+label(table_data_2$med_treatment) <- "Type of treatment"
+label(table_data_2$med_hospital) <- "Type of clinic"
+label(table_data_2$med_wheretx) <- "Type of ward"
+label(table_data_2$med_currenttx) <- "Currently in treatment?"
+label(table_data_2$med_txcomplete) <- "How long ago did you complete it?"
+label(table_data_2$med_txinfertility) <- "Treatment causes infertility?"
+
+units(table_data_2$med_cancerage) <- "years"
+
+table1(~ med_cancerage + med_treatment + med_hospital + med_wheretx + med_currenttx + med_txcomplete + med_txinfertility,
+       data = table_data_2)
+```
+*Other treatment includes immunotherapy or other targeted therapies, intervention radiology treatments and other options not listed
+
+\newpage
+### Table 2 continuted: Types of cancer
+```{r echo=FALSE, warning=FALSE}
+table_data_2c <- table_data_2 %>%
+  dplyr::select(med_cancerdx) %>%
+  mutate(med_cancerdx_2 = case_when(med_cancerdx == "leuk" | med_cancerdx == "lymph" ~ "Hematologic",
+                                    med_cancerdx == "brain" | med_cancerdx == "cns" ~ "Brain & CNS",
+                                    med_cancerdx == "colre" | med_cancerdx == "gastr" ~ "Colon, Rectal, Gastric",
+                                    med_cancerdx == "cerv" | med_cancerdx == "endo" | med_cancerdx == "ovari" ~ "Cervical, Ovarian, Endometrial",
+                                    med_cancerdx == "breas" ~ "Breast",
+                                    med_cancerdx == "sarco" ~ "Sarcomas",
+                                    med_cancerdx == "bladd" | med_cancerdx == "kidn" | med_cancerdx == "liver" ~ "Bladder, Kidney, Liver",
+                                    med_cancerdx == "lung" ~ "Lung",
+                                    med_cancerdx == "mela" ~ "Melanoma",
+                                    med_cancerdx == "pancr" ~ "Pancreatic",
+                                    med_cancerdx == "testi" ~ "Testicular",
+                                    med_cancerdx == "thyro" ~ "Thyroid",
+                                    med_cancerdx == "prost" ~ "Prostate",
+                                    med_cancerdx == "other" ~ "Other"
+                                    ))
+
+label(table_data_2c$med_cancerdx_2) <- "Cancer diagnosis"
+
+table1(~ med_cancerdx_2,
+       data = table_data_2c)
+```
+
+\newpage
+### Age at diagnosis distribution
+
+The sole purpose of this histogram is to demonstrate the focus of our work on the adolescents and young adults who receive the diagnosis.
+
+```{r echo=FALSE, warning=FALSE, fig.width=5, fig.height=3, fig.align='center'}
+data %>%
+  ggplot(aes(x = med_cancerage)) +
+  geom_histogram(aes(y=..density..), bins = 30, color = "black", fill="lightblue") +
+  geom_density(fill = "#FF6666", alpha = 0.2) +
+  theme_bw() +
+  scale_x_continuous(breaks = seq(0, 40, by=2)) +
+  labs(x = "Age at diagnosis",
+       y = "Count")
+```
+
+The table below shows the cumulative number of participants below a certain age at diagnosis.
+
+```{r echo=FALSE, warning=FALSE}
+data %>%
+  dplyr::select(med_cancerage) %>%
+  filter(med_cancerage < 15) %>%
+  group_by(med_cancerage) %>%
+  count() %>%
+  ungroup() %>%
+  mutate(cum.sum = cumsum(n)) %>%
+  kable(col.names = c("Age at diag.", "N", "Cumulative sum")) %>%
+  kable_styling("hover", full_width = FALSE, latex_options = "HOLD_position")
+```
+
+\newpage
+# PART 1: Fertility preservation service: Awareness, satisfaction, and preferences
+
+## Fertility preservation service awareness and satisfaction
+
+### Were you informed that infertility is a late effect risk?
+
+```{r echo=FALSE, warning=FALSE}
+data %>%
+  dplyr::select(awareness_1) %>%
+  mutate(awareness_1 = factor(awareness_1,
+                          levels = c(0, 1, 2),
+                          labels = c("No", "Yes", "Don't remember"))) %>%
+  group_by(awareness_1) %>%
+  count() %>%
+  ungroup() %>%
+  mutate(sum = sum(n),
+         prop = n/sum,
+         prop = paste0(round(prop, 2)*100, "%")) %>%
+  dplyr::select(-sum) %>%
+  kable(col.names = c("Response", "N", "Proportion")) %>%
+  kable_styling("hover", full_width = FALSE, latex_options = "HOLD_position")
+```
+
+### Information about infertility per country cluster
+
+```{r echo=FALSE, warning=FALSE, fig.width=6, fig.height=5, fig.align='left'}
+data %>%
+  dplyr::select(awareness_1, dem_cluster) %>%
+  mutate(awareness_1 = factor(awareness_1,
+                          levels = c(0, 1, 2),
+                          labels = c("No", "Yes", "Don't \nremember"))) %>%
+  group_by(awareness_1, dem_cluster) %>%
+  count() %>%
+  group_by(dem_cluster) %>%
+  mutate(sum = sum(n),
+         prop = n/sum,
+         prop = round(prop, 2)*100) %>%
+  dplyr::select(-sum) %>%
+  mutate(awareness_1 = as.factor(awareness_1),
+         awareness_1 = fct_reorder(awareness_1, prop)) %>%
+  ggplot(aes(x = prop, y = awareness_1, fill = awareness_1)) + 
+  geom_col() + 
+  geom_text(aes(label = paste0(prop, "%"), x = prop + 11)) +
+  labs(title = " ", 
+       x = "Proportion",
+       y = " ") + 
+  xlim(0, 100) +
+  theme_classic(base_size = 12.5) +
+  theme(legend.position = "none",
+        strip.text = element_text(face = 'bold'),
+        panel.grid.major.x = element_line()) +
+  scale_fill_viridis_d(begin = 0.3, end = 0.8) +
+  facet_wrap(~dem_cluster, labeller = as_labeller(cluster_names))
+
+```
+
+** check if this information varied by where they received the treatment - or ward
+
+
+```{r echo=FALSE, warning=FALSE}
+pt1 <- data %>%
+  dplyr::select(awareness_1, dem_cluster) %>%
+  mutate_all(as.factor)
+
+# chisq_test(pt1, awareness_1 ~ dem_cluster)
+
+```
+There were significant differences in the proportion of individuals who were informed about the possibility of infertility between the country clusters, $\chi^2$ (`r chisq_test(pt1, awareness_1 ~ dem_cluster)[[1,2]]`, `r nrow(pt1)`) = `r round(chisq_test(pt1, awareness_1 ~ dem_cluster)[[1,1]],2)`, *p* =  `r round(chisq_test(pt1, awareness_1 ~ dem_cluster)[[1,3]],2)`, with effect size *Cramer V* = `r round(cramerV(pt1$awareness_1, pt1$dem_cluster, bias.correct = TRUE),2)`.
+
+### Responses based on the type of ward
+```{r echo=FALSE, warning=FALSE, fig.width=6, fig.height=5, fig.align='left'}
+med_wheretx
+
+data %>%
+  dplyr::select(awareness_1, med_wheretx) %>%
+  mutate(med_wheretx = factor(med_wheretx,
+                               levels = c(0, 1, 2, 3, 999),
+                               labels = c("Pediatric ward", "Young adult ward", "Adult ward", "Mixed service", "Prefer not to answer"))) %>%
+  filter(med_wheretx != "Prefer not to answer") %>%
+  mutate(awareness_1 = factor(awareness_1,
+                          levels = c(0, 1, 2),
+                          labels = c("No", "Yes", "Don't \nremember"))) %>%
+  group_by(awareness_1, med_wheretx) %>%
+  count() %>%
+  group_by(med_wheretx) %>%
+  mutate(sum = sum(n),
+         prop = n/sum,
+         prop = round(prop, 2)*100) %>%
+  dplyr::select(-sum) %>%
+  mutate(awareness_1 = as.factor(awareness_1),
+         awareness_1 = fct_reorder(awareness_1, prop)) %>%
+  ggplot(aes(x = prop, y = awareness_1, fill = awareness_1)) + 
+  geom_col() + 
+  geom_text(aes(label = paste0(prop, "%"), x = prop + 11)) +
+  labs(title = " ", 
+       x = "Proportion",
+       y = " ") + 
+  xlim(0, 100) +
+  theme_classic(base_size = 12.5) +
+  theme(legend.position = "none",
+        strip.text = element_text(face = 'bold'),
+        panel.grid.major.x = element_line()) +
+  scale_fill_viridis_d(begin = 0.3, end = 0.8) +
+  facet_wrap(~med_wheretx)
+
+```
+
+
+### Have you been informed about medical options available for fertility preservation?
+
+```{r echo=FALSE, warning=FALSE}
+data %>%
+  dplyr::select(contains("awareness")) %>%
+  dplyr::select(awareness_2) %>%
+  mutate(awareness_2 = factor(awareness_2,
+                          levels = c(0, 1, 2),
+                          labels = c("No", "Yes", "Don't remember"))) %>%
+  group_by(awareness_2) %>%
+  count() %>%
+  ungroup() %>%
+  mutate(sum = sum(n),
+         prop = n/sum,
+         prop = paste0(round(prop, 2)*100, "%")) %>%
+  dplyr::select(-sum) %>%
+  kable(col.names = c("Response", "N", "Proportion")) %>%
+  kable_styling("hover", full_width = FALSE, latex_options = "HOLD_position")
+```
+
+### Those who have been informed about medical options: When were you informed?
+
+```{r echo=FALSE, warning=FALSE}
+data %>%
+  dplyr::select(contains("awareness")) %>%
+  dplyr::select(awareness_3) %>%
+  drop_na() %>%
+  mutate(awareness_3 = factor(awareness_3,
+                          levels = c(1:5),
+                          labels = c("At diagnosis", "After diagnosis, before treatment", "While in treatment", "After finishing treatment","Don't remember"))) %>%
+  group_by(awareness_3) %>%
+  count() %>%
+  ungroup() %>%
+  mutate(sum = sum(n),
+         prop = n/sum,
+         prop = paste0(round(prop, 2)*100, "%")) %>%
+  #dplyr::select(-sum) %>%
+  kable(col.names = c("Response", "N", "Sum","Proportion")) %>%
+  kable_styling("hover", full_width = FALSE, latex_options = "HOLD_position")
+```
+
+** Discussion points - should we be mentioning this at the very first visit, or is it too overwhelming for patients?
+
+### Those who have been informed about medical options: Who or what source provided the most relevant information?
+
+```{r echo=FALSE, warning=FALSE}
+data %>%
+  dplyr::select(contains("awareness")) %>%
+  dplyr::select(awareness_4) %>%
+  drop_na() %>%
+  mutate(awareness_4 = factor(awareness_4,
+                          levels = c(1:7),
+                          labels = c("Oncologist", "Another HCP", "Educational material", "Friends/family", "Cancer charity/cancer peer support", "I sought information myself", "Other"))) %>%
+  group_by(awareness_4) %>%
+  count() %>%
+  ungroup() %>%
+  mutate(sum = sum(n),
+         prop = n/sum,
+         prop = paste0(round(prop, 2)*100, "%")) %>%
+  #dplyr::select(-sum) %>%
+  kable(col.names = c("Response", "N", "Sum","Proportion")) %>%
+  kable_styling("hover", full_width = FALSE, latex_options = "HOLD_position")
+```
+  
+** Discussion points - who is best equipped to provide this sort of information?
+
+### Those who have been informed about medical options: How satisfied were you with the information?
+
+```{r echo=FALSE, warning=FALSE}
+data %>%
+  dplyr::select(contains("awareness")) %>%
+  dplyr::select(awareness_5_sq__1) %>%
+  drop_na() %>%
+  mutate(awareness_5_sq__1 = factor(case_when(awareness_5_sq__1 == 0 | awareness_5_sq__1 == 1 ~ "Dissatisfied",
+                                              awareness_5_sq__1 == 2 ~ "Neither",
+                                              awareness_5_sq__1 == 3 | awareness_5_sq__1 == 5 ~ "Satisfied"))) %>%
+  group_by(awareness_5_sq__1) %>%
+  count() %>%
+  ungroup() %>%
+  mutate(sum = sum(n),
+         prop = n/sum,
+         prop = paste0(round(prop, 2)*100, "%")) %>%
+  #dplyr::select(-sum) %>%
+  kable(col.names = c("Response", "N", "Sum","Proportion")) %>%
+  kable_styling("hover", full_width = FALSE, latex_options = "HOLD_position")
+
+# data %>%
+#   dplyr::select(awareness_5_sq__1, awareness_6) %>%
+#   drop_na() %>%
+#   mutate(awareness_5_sq__1 = factor(case_when(awareness_5_sq__1 == 0 | awareness_5_sq__1 == 1 ~ "Dissatisfied",
+#                                               awareness_5_sq__1 == 2 ~ "Neither",
+#                                               awareness_5_sq__1 == 3 | awareness_5_sq__1 == 5 ~ "Satisfied"))) %>%
+#   filter(awareness_5_sq__1 == "Dissatisfied")
+```
+
+**Those who were satisfied listed reasons for their satisfaction as**: 
+  
+  - clear, detailed and straightforward information, 
+  - steps involved in fertility preservation were explained, 
+  - kind, supportive and trustworthy personnel, 
+  - seamless communication between relevant medical departments, 
+  - several people also mentioned that they were satisfied because of the psychological counselling that was involved
+
+**Those who reported being dissatisfied mentioned the following**:
+
+- the preferred option of FP not available or possible due to late cancer detection
+- received the information but had to initiate FP themselves
+- lack of adequate information and costs involved (hidden costs)
+- limited options for FP
+- experiencing pain or discomfort due to FP or fertility related questions/difficulties
+- feeling rushed to make a decision
+- dismissal of the emotional aspect of fertility-related difficulties
+
+## Preference in receiving information related to fertility preservation
+
+### Ranking of the information sources young individuals prefer
+
+```{r echo=FALSE, warning=FALSE}
+data %>%
+  dplyr::select(contains("preference_source")) %>%
+  pivot_longer(cols = c(preference_source_1:preference_source_6),
+               names_to = "option",
+               values_to = "rank") %>%
+ # filter(rank == 1) %>%
+  group_by(option, rank) %>%
+  count() %>%
+  group_by(option) %>%
+  mutate(sum = sum(n),
+         prop = round(n/sum*100,1)) %>%
+  ggplot(aes(x = factor(rank), y = option, fill = n)) +
+  geom_tile() +
+  geom_text(aes(label = paste0(n, " "))) +
+  scale_fill_viridis_c() +
+  scale_y_discrete(limits=rev)
+
+ggplot(data, aes(X, Y, fill= Z)) + 
+  geom_tile()
+
+```
+
+\newpage
+### Importance of different people involved in the decision-making process
+
+```{r echo=FALSE, warning=FALSE, fig.width=5.5, fig.height=8, fig.align='center'}
+data %>%
+  dplyr::select(contains("preference_decision")) %>%
+  pivot_longer(cols = c(preference_decision_sq__1:preference_decision_sq__8),
+               names_to = "party",
+               values_to = "importance") %>%
+  mutate(party = case_when(party == "preference_decision_sq__1" ~ "Fertility preservation specialist",
+                           party == "preference_decision_sq__2" ~ "Oncologist",
+                           party == "preference_decision_sq__3" ~ "Entire medical team",
+                           party == "preference_decision_sq__4" ~ "Psychologist",
+                           party == "preference_decision_sq__5" ~ "Social worker",
+                           party == "preference_decision_sq__6" ~ "Partner",
+                           party == "preference_decision_sq__7" ~ "Parents/Care-giver",
+                           party == "preference_decision_sq__8" ~ "Cancer peers/organizations")) %>%
+  group_by(party, importance) %>%
+  count() %>%
+  group_by(party) %>%
+  mutate(sum= sum(n),
+         prop = n/sum,
+         prop = round(prop, 2)*100,
+         prop2 = paste0(prop, "%")) %>%
+  ggplot(aes(x = factor(importance), y = prop, fill = factor(importance))) +
+  geom_col() +
+  #coord_flip() +
+  facet_wrap(~party, ncol = 2) + 
+  geom_text(aes(label = paste0(prop,"%"), y = prop + 4)) +
+  labs(title = " ", 
+       y = "Proportion (%)",
+       x = "Level of importance reported") + 
+  ylim(0, 50) +
+  theme_classic(base_size = 11) +
+  theme(legend.position = "none",
+        strip.text = element_text(face = 'bold'),
+        panel.grid.major.x = element_line(),
+        axis.text.x = element_text(angle = 45, vjust = 0.5)) +
+  scale_x_discrete(breaks = c("0","1", "2", "3", "4", "999"),
+                   labels = c("Not \nimportant",
+                              "Slightly \nimportant",
+                              "Fairly \nimportant",
+                              "Important",
+                              "Very \nimportant",
+                              "Not \napplicable"))
+```
+
+** We should maybe consider combining some answers..
+
+\newpage
+# PART 2: Barriers: Availability and affordability of fertility preservation services
+
+## Proportion of individuals who accessed a fertility preservation procedure
+
+Compare the country clusters using CHI SQ
+
+
+\newpage
+# PART 3: Quality of life and well-being
+
+## Quality of life
+
+```{r echo=FALSE, warning=FALSE}
+
+whoqol_total_alpha <- data %>%
+  dplyr::select(contains("whoqol")) %>%
+  dplyr::select(-whoqol_total, -whoqol_physical, -whoqol_psych, -whoqol_social, -whoqol_environ) %>%
+  psych::alpha(check.keys = TRUE)
+
+whoqol_physical_alpha <- data %>%
+  dplyr::select(whoqol_3_1, whoqol_3_2, whoqol_5_1, whoqol_6_1, whoqol_7_1, whoqol_7_2, whoqol_7_3) %>%
+  psych::alpha(check.keys = TRUE)
+
+whoqol_psych_alpha <- data %>%
+  dplyr::select(whoqol_3_3, whoqol_3_4, whoqol_4_1, whoqol_5_2, whoqol_7_4) %>%
+  psych::alpha(check.keys = TRUE)
+
+whoqol_social_alpha <- data %>%
+  dplyr::select(whoqol_7_5, whoqol_7_6, whoqol_7_7) %>%
+  psych::alpha(check.keys = TRUE)
+
+whoqol_environ_alpha <- data %>%
+  dplyr::select(whoqol_4_2, whoqol_4_3, whoqol_5_3, whoqol_5_4, whoqol_5_5,
+                whoqol_7_8, whoqol_7_9, whoqol_7_10) %>%
+  psych::alpha(check.keys = TRUE)
+
+```
+
+The mean overall quality of life score was `r round(mean(data$whoqol_total),2)` (*SD* = `r round(sd(data$whoqol_total),2)`). Internal consistency (Cronbach $\alpha$) for the entire sample was high: `r round(whoqol_total_alpha$total[[1]],2)`.
+
+The sub-domains were as follows:
+
+- Physical domain score: *M* =  `r round(mean(data$whoqol_physical),2)` (*SD* = `r round(sd(data$whoqol_physical),2)`). Internal consistency (Cronbach $\alpha$) for the physical domain subscale sample was: `r round(whoqol_physical_alpha$total[[1]],2)`.
+
+- Psychological domain score: *M* =  `r round(mean(data$whoqol_psych),2)` (*SD* = `r round(sd(data$whoqol_psych),2)`). Internal consistency (Cronbach $\alpha$) for the psychological domain subscale sample was: `r round(whoqol_psych_alpha$total[[1]],2)`.
+
+- Social domain score: *M* =  `r round(mean(data$whoqol_social),2)` (*SD* = `r round(sd(data$whoqol_social),2)`). Internal consistency (Cronbach $\alpha$) for the social domain subscale sample was: `r round(whoqol_social_alpha$total[[1]],2)`.
+
+- Environmental domain score: *M* =  `r round(mean(data$whoqol_environ),2)` (*SD* = `r round(sd(data$whoqol_environ),2)`). Internal consistency (Cronbach $\alpha$) for the social domain subscale sample was: `r round(whoqol_environ_alpha$total[[1]],2)`.
+
+
+Compare the QoL country clusters using ANOVA
+** Discussion points: Compare the scores to norms and similar published articles
+
+## Feelings of depression and anxiety
+
+```{r echo=FALSE, warning=FALSE}
+phq_sum_alpha <- data %>%
+  dplyr::select(phq_sq__1, phq_sq__2, phq_sq__3, phq_sq__4) %>%
+  psych::alpha(check.keys = TRUE)
+
+phq_anxiety_alpha <- data %>%
+  dplyr::select(phq_sq__1, phq_sq__2) %>%
+  psych::alpha(check.keys = TRUE)
+
+phq_depression_alpha <- data %>%
+  dplyr::select(phq_sq__3, phq_sq__4) %>%
+  psych::alpha(check.keys = TRUE)
+
+# data %>%
+#   dplyr::select(dem_sex, dem_cluster, phq_sum) %>%
+#   dplyr::group_by(dem_cluster) %>%
+#   skim(phq_sum)
+#   kable()
+
+# 
+# mean(data$phq_depression)
+# mean(data$phq_anxiety)
+# sd(data$phq_depression)
+# sd(data$phq_anxiety)
+
+data %>%
+  dplyr::select(dem_sex, dem_cluster, phq_anxiety) %>%
+  filter(dem_sex %in% c(1:2)) %>%
+  ggplot(aes(x = factor(dem_sex), y = phq_anxiety, fill = factor(dem_sex))) +
+  geom_boxplot() +
+  facet_wrap(~dem_cluster)
+```
+
+The mean overall psychological distress score was `r round(mean(data$phq_sum),2)` (*SD* = `r round(sd(data$phq_sum),2)`). Internal consistency (Cronbach $\alpha$) for the overall score was: `r round(phq_anxiety_alpha$total[[1]],2)`, and `r round(phq_sum_alpha$total[[1]],2)` and `r round(phq_depression_alpha$total[[1]],2)` for anxiety and depression, respectively.
+
+Compare men and women
+Compare clusters
+Compare 
+
+A cut-off score of ≥ 3 in GAD-2 is reasonably sensitive in detecting generalized anxiety disorder (88%), panic disorder (76%), social anxiety disorder (70%), and posttraumatic stress disorder (59%; Kroenke et al., 2007).
+
+A cut-off score of ≥ 3 in PHQ-2 is 83% sensitive and 90% specific in detecting major depressive disorder (Kroenke et al., 2003).
+
+
+```{r}
+# Levene's test
+
+test <- data %>%
+  filter(dem_sex == 1) %>%
+  mutate(dem_cluster = as.factor(dem_cluster))
+
+levene_test(test, phq_sum ~ factor(dem_cluster))
+levene_test(data, whoqol_total ~ factor(dem_cluster))
+##     df1   df2 statistic      p
+##   <int> <int>     <dbl>  <dbl>
+## 1     5  4399      2.12 0.0605
+
+# ANCOVA
+m_phq = aov(phq_sum ~ dem_cluster, 
+         data = test)
+
+Anova(m_phq, type="III")
+
+m2_posthoc <- glht(m_phq, linfct = mcp(dem_cluster = "Tukey"))
+summary(m2_posthoc)
+
+m_phq_posthoc <- glht(m_phq, linfct = mcpdem_cluster) = "Tukey"))
+summary(m2_posthoc)
+
+table(data$dem_sex, data$dem_cluster)
+```
+
+
+\newpage
+## Perceived changes in quality of life and well-being since the time of diagnosis
+
+### Thinking about your life with illness, have the following changed since the diagnosis?
+
+```{r echo=FALSE, warning=FALSE, fig.width=6, fig.height=5}
+data %>%
+  dplyr::select(contains("qol_change")) %>%
+  rename(`Quality of life` = qol_change_sq__1, 
+         Depression = qol_change_sq__2,
+         Anxiety = qol_change_sq__3) %>%
+  pivot_longer(cols = c(`Quality of life`, Depression, Anxiety),
+               names_to = "construct",
+               values_to = "response") %>%
+  group_by(construct, response) %>%
+  count() %>%
+  group_by(construct) %>%
+  mutate(sum = sum(n),
+         prop = n/sum*100,
+         prop = round(prop, 1)) %>%
+  ggplot(aes(x = factor(response), y = prop, fill = factor(response))) +
+  geom_col() +
+  facet_wrap(~construct, ncol = 3) + 
+  geom_text(aes(label = paste0(prop,"%"), y = prop + 4)) +
+  labs(title = " ", 
+       y = "Proportion (%)",
+       x = " ") + 
+  ylim(0, 50) +
+  theme_classic(base_size = 11) +
+  theme(legend.position = "none",
+        strip.text = element_text(face = 'bold'),
+        panel.grid.major.x = element_line(),
+        ) +
+  scale_fill_viridis_d() +
+  scale_x_discrete(breaks = c("0","1", "2"),
+                   labels = c("It \nworsened",
+                              "Stayed \nsame",
+                              "It \nimproved"))
+```
+
+### Do fertility-related worries or problems impact the following?
+
+** is this different between men and women
+
+```{r echo=FALSE, warning=FALSE}
+
+data %>%
+  dplyr::select(contains("qol_fertility")) %>%
+  rename(`Quality of life` = qol_fertility_sq__1, 
+         Anxiety = qol_fertility_sq__2,
+         Depression = qol_fertility_sq__3,
+         `Romantic relationships` = qol_fertility_sq__4) %>%
+  pivot_longer(cols = c(`Quality of life`, Anxiety, Depression, `Romantic relationships`),
+               names_to = "construct",
+               values_to = "response") %>%
+  group_by(construct, response) %>%
+  count() %>%
+  group_by(construct) %>%
+  mutate(sum = sum(n),
+         prop = n/sum*100,
+         prop = round(prop, 1)) %>%
+  ggplot(aes(x = factor(response), y = prop, fill = factor(response))) +
+  geom_col() +
+  facet_wrap(~construct, ncol = 2) + 
+  geom_text(aes(label = paste0(prop,"%"), y = prop + 4)) +
+  labs(title = " ", 
+       y = "Proportion (%)",
+       x = " ") + 
+  ylim(0, 65) +
+  theme_classic(base_size = 11) +
+  theme(legend.position = "none",
+        strip.text = element_text(face = 'bold'),
+        panel.grid.major.x = element_line(),
+        ) +
+  scale_fill_viridis_d() +
+  scale_x_discrete(breaks = c("0","1", "2"),
+                   labels = c("Not at all",
+                              "Somewhat",
+                              "To a great extent"))
+
+```
+
