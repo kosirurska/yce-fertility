@@ -1,0 +1,1535 @@
+---
+title: "YCE Fertility preservation: Cross-sectional survey results (Preliminary)"
+output: html_document
+bibliography: reference.bib
+# date: "Last update: `r Sys.Date()`"
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(tidymodels)
+library(readr)
+library(here)
+library(psych)
+library(english)
+library(stringr)
+library(tableone)
+library(kableExtra)
+library(patchwork)
+library(scales)
+library(ggridges)
+library(plotly)
+library(patchwork)
+library(haven)
+library(table1)
+library(gt)
+library(skimr)
+library(rcompanion)
+library(rstatix)
+library(car)
+library(multcomp)
+library(effects)
+library(pastecs)
+library(sjPlot)
+```
+
+```{r data, echo=FALSE, message=FALSE, warning=FALSE}
+# Read in the clean csv file
+raw_data <- read_csv("results.csv")
+
+raw_data$startdate<-as.Date(raw_data$startdate, '%Y-%m-%d')
+
+data <- raw_data %>%
+  select_all(tolower) %>%
+  rename_with(~gsub("0", "_", .x, fixed = TRUE)) %>%
+  rename_with(~gsub("[", "_", .x, fixed = TRUE)) %>%
+  rename_with(~gsub("]", "", .x, fixed = TRUE)) %>%
+  filter(consent == 1) %>% #filter for consent
+  filter(check == 4) %>% #filter for bot check
+  filter(dem_age %in% c(18:65)) %>% #filter for age
+  filter(med_cancerage %in% c(15:39)) %>%
+  filter(lastpage %in% c(9:10)) %>% #filter for completion
+  mutate(med_cancerage = replace(med_cancerage, med_cancerage == 2010, 22)) %>% #correct the mistake where person inserted the year of diagnosis, the age was calculated using the current age
+  rename(whoqol_7_7 = whoqol_7_whoqolbref22,
+         whoqol_7_8 = whoqol_7_whoqolbref23,
+         whoqol_7_9 = whoqol_7_whoqolbref24,
+         whoqol_7_10 = whoqol_7_whoqolbref25) %>%
+  rowwise() %>%
+  mutate(phq_sq__1 = phq_sq__1-1, 
+         phq_sq__2 = phq_sq__2-1,
+         phq_sq__3 = phq_sq__3-1,
+         phq_sq__4 = phq_sq__4-1,
+         phq_sum = sum(phq_sq__1, phq_sq__2, phq_sq__3, phq_sq__4, na.rm = FALSE),
+         phq_anxiety = sum(phq_sq__1, phq_sq__2, na.rm = FALSE),
+         phq_depression = sum(phq_sq__3, phq_sq__4, na.rm = FALSE),
+         whoqol_total = sum(whoqol_1_1, whoqol_2_2, #1,2
+                            whoqol_3_1, whoqol_3_2, whoqol_3_3, whoqol_3_4, #3,4,5,6
+                            whoqol_4_1, whoqol_4_2, whoqol_4_3, #7,8,9
+                            whoqol_5_1, whoqol_5_2, whoqol_5_3, whoqol_5_4, whoqol_5_5, #10,11,12,13,14
+                            whoqol_6_1, #15
+                            whoqol_7_1, whoqol_7_2, whoqol_7_3, whoqol_7_4, whoqol_7_5,#16,17,18,19,20
+                            whoqol_7_6, whoqol_7_7, whoqol_7_8, whoqol_7_9, whoqol_7_10,#21,22,23,24,25
+                            whoqol_8_1, na.rm = FALSE), #26
+         whoqol_physical = sum(whoqol_3_1, whoqol_3_2, whoqol_5_1, whoqol_6_1, 
+                               whoqol_7_1, whoqol_7_2, whoqol_7_3, na.rm = FALSE),
+         whoqol_psych = sum(whoqol_3_3, whoqol_3_4, whoqol_4_1, whoqol_5_2, whoqol_7_4, na.rm = FALSE),
+         whoqol_social = sum(whoqol_7_5, whoqol_7_6, whoqol_7_7, na.rm = FALSE),
+         whoqol_environ = sum(whoqol_4_2, whoqol_4_3, whoqol_5_3, whoqol_5_4, whoqol_5_5,
+                              whoqol_7_8, whoqol_7_9, whoqol_7_10, na.rm = FALSE)
+         ) %>%
+  mutate(dem_cluster = case_when(dem_nationality == "AUT" | dem_nationality == "DEU" ~ 1,
+                                dem_nationality == "BEL" | dem_nationality == "LUX" |
+                                dem_nationality == "NLD" | dem_nationality == "FIN" |
+                                dem_nationality == "FRA" | dem_nationality == "IRL" |
+                                dem_nationality == "SWE" | dem_nationality == "GBR" ~ 2,
+                                dem_nationality == "CYP" | dem_nationality == "GRC" |
+                                dem_nationality == "ITA" | dem_nationality == "MLT" |
+                                dem_nationality == "PRT" | dem_nationality == "ESP" ~ 3,
+                                dem_nationality == "BGR" | dem_nationality == "HUN" |
+                                dem_nationality == "LVA" | dem_nationality == "LTU" |
+                                dem_nationality == "SVK" | dem_nationality == "ROU" ~ 4,
+                                dem_nationality == "HRV" | dem_nationality == "CZE" |
+                                dem_nationality == "EST" | dem_nationality == "POL" |
+                                dem_nationality == "SVN" ~ 5)) %>%
+  mutate(dem_cluster = replace_na(dem_cluster, 6)) %>%
+  mutate(eu = case_when(dem_nationality == "AUT" | dem_nationality == "DEU" |
+                        dem_nationality == "BEL" | dem_nationality == "LUX" |
+                        dem_nationality == "NLD" | dem_nationality == "FIN" |
+                        dem_nationality == "FRA" | dem_nationality == "IRL" |
+                        dem_nationality == "SWE" | dem_nationality == "GBR" |
+                        dem_nationality == "CYP" | dem_nationality == "GRC" |
+                        dem_nationality == "ITA" | dem_nationality == "MLT" |
+                        dem_nationality == "PRT" | dem_nationality == "ESP" |
+                        dem_nationality == "BGR" | dem_nationality == "HUN" |
+                        dem_nationality == "LVA" | dem_nationality == "LTU" |
+                        dem_nationality == "SVK" | dem_nationality == "ROU" |
+                        dem_nationality == "HRV" | dem_nationality == "CZE" |
+                        dem_nationality == "EST" | dem_nationality == "POL" |
+                        dem_nationality == "SVN" ~ "EU")) %>%
+  mutate(eu = replace_na(eu, "non-eu"))
+
+data$startdate<-as.Date(data$startdate, '%Y-%m-%d')## Keep just day, month, year
+
+cluster_names <- c(
+  "1" = "Cluster 1",
+  "2" = "Cluster 2",
+  "3" = "Cluster 3",
+  "4" = "Cluster 4",
+  "5" = "Cluster 5",
+  "6" = "Cluster 6"
+)
+
+response <- c(
+  "0" = "Tx doesn't cause \n infertility",
+  "1" = "Tx causes \n infertility",
+  "2" = "Don't remember"
+)
+
+cluster_names_n <- c(
+  "1" = "Germany-Austria \n(N=83)",
+  "2" = "Center & North \n(N=214)",
+  "3" = "Southeren \n(N=44)",
+  "4" = "Eastern A \n(N=35)",
+  "5" = "Eastern B \n(N=55)",
+  "6" = "Other non-EU \n(N=194)"
+)
+```
+
+*Authors*: Urska Kosir\*, Mariana Coutinho, Ana Amariutei, Eva De
+Clercq, Katie Rizvi *on behalf of the YCE Research Team*
+
+\*Corresponding author :
+[dr.urska.kosir\@gmail.com](mailto:dr.urska.kosir@gmail.com){.email}
+
+<br> <br>
+
+### Part 1: Sample recruitment and demographic and medical information
+
+The survey recruitment ran between February 18, 2022 and September 15,
+2022. The anonymous survey link that was shared on social media resulted
+in `r nrow(raw_data)` visits to the front page with the information
+about they study. The link was circulated via cancer charity email
+newsletters and across cancer organisations from the European region.
+Social media posts were promoted on Facebook and Instagram aiming at age
+range between 18 and 39 years, and in particular Eeastern European
+countries, which had the lowest participation. The number of
+participants who reviewed the information and agreed to participate was
+`r sum(raw_data$consent, na.rm = TRUE) - raw_data %>% filter(check != 4) %>% nrow()`.
+Number of participants who completed the survey was
+`r raw_data %>% filter(lastpage %in% c(9:10)) %>% nrow()` or
+`r round((raw_data %>% filter(lastpage %in% c(9:10)) %>% nrow())/(sum(raw_data$consent, na.rm = TRUE) - raw_data %>% filter(check != 4) %>% nrow())*100,1)`%
+of those who consented.
+
+Overall, 47 countries were represented and all 27 European Union
+members, although several had only 1 participant. The complete table can
+be viewed below with corresponding number of participants in each
+country. The codes are ISO-3 country codes
+[source](https://www.iban.com/country-codes). Among the Non-EU countries
+we have OTH = Other; individuals had either wished not to respond, or
+came from a country that was not listed.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+data %>%
+  dplyr::select(dem_nationality, eu) %>%
+  filter(eu == "EU") %>%
+  group_by(dem_nationality) %>%
+  count() %>%
+  ungroup() %>%
+  mutate(sum = sum(n),
+         prop = n/sum,
+         prop = round(prop, 2)) %>%
+  dplyr::select(-sum) %>%
+  kable(col.names = c("Country code", "N", "Proportion"), caption = "EU Countries") %>%
+  kable_styling("hover", full_width = FALSE, position = "float_left")
+
+data %>%
+  dplyr::select(dem_nationality, eu) %>%
+  filter(eu != "EU") %>%
+  drop_na() %>%
+  group_by(dem_nationality) %>%
+  count() %>%
+  ungroup() %>%
+  mutate(sum = sum(n),
+         prop = n/sum,
+         prop = round(prop, 2)) %>%
+  dplyr::select(-sum) %>%
+  kable(col.names = c("Country code", "N", "Proportion"), caption = "Non-EU Countries") %>%
+  kable_styling("hover", full_width = FALSE, position = "right")
+```
+
+<br> <br>
+
+<br> <br>
+
+<br> <br>
+
+<br> <br>
+
+<br> <br>
+
+<br> <br>
+
+### Region groupings
+
+For the purposes of comparative analyses we grouped individuals from
+different countries into 6 distinct country clusters. These clusters are
+based on @ferreira2018 analyses of healthcare indices across the EU
+countries. @ferreira2018 used data from the WHO and Eurostat databases
+and grouped countries into the following clusters: Austria-Germany,
+Central and Northern countries, Southern countries, Eastern countries A,
+and Eastern countries B. The classification resulted from an extensive
+overview of the literature on health determinants, and combines factor,
+cluster, and descriptive analyses. The grouping was based on 1) health
+service provision, 2) generation of health resources (investment and
+training), and 3) health financing in respective countries. In addition,
+the authors also considered GDP, real GDP Growth Rate and Governmental
+Debt. Because our data included individuals from outside the EU, we
+resultantly grouped all the remaining countries into the 6th cluster
+(see Figure 1). Such clustering allowed us to make more meaningful
+comparisons of results and can guide health policy assessments and
+recommendations.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+data %>%
+  dplyr::select(dem_nationality) %>%
+  drop_na() %>%
+  mutate(dem_region = case_when(dem_nationality == "AUT" | dem_nationality == "DEU" ~ "1 - Austria-Germany",
+                                dem_nationality == "BEL" | dem_nationality == "LUX" |
+                                dem_nationality == "NLD" | dem_nationality == "FIN" |
+                                dem_nationality == "FRA" | dem_nationality == "IRL" |
+                                dem_nationality == "SWE" | dem_nationality == "GBR" ~ "2 - Central and Northern countries",
+                                dem_nationality == "CYP" | dem_nationality == "GRC" |
+                                dem_nationality == "ITA" | dem_nationality == "MLT" |
+                                dem_nationality == "PRT" | dem_nationality == "ESP" ~ "3 - Southern countries",
+                                dem_nationality == "BGR" | dem_nationality == "HUN" |
+                                dem_nationality == "LVA" | dem_nationality == "LTU" |
+                                dem_nationality == "SVK" | dem_nationality == "ROU" ~ "4 - Eastern countries A",
+                                dem_nationality == "HRV" | dem_nationality == "CZE" |
+                                dem_nationality == "EST" | dem_nationality == "POL" |
+                                dem_nationality == "SVN" ~ "5 - Eastern countries B")) %>%
+  mutate(dem_region = replace_na(dem_region, "6 - Other")) %>%
+  group_by(dem_region) %>%
+  count() %>%
+  kableExtra::kable(col.names = c("Cluster #", "N collected")) %>%
+  kable_styling("hover", full_width = FALSE, latex_options = "HOLD_position")
+```
+
+```{r fig-1, echo = FALSE, fig.cap = "Fig. 1.1: EU country clusters for comparative analyses based on Ferreira et al. 2018", fig.align='center'}
+knitr::include_graphics("clusters.png")
+```
+
+Participants were on average 30 years, ranging between 18 and 61 years
+at the time of participation. Just over half, 51.9% identified as
+females, and 47.5% identified as male. Further details about the
+demographic information can be viewed in Table 1.3.
+
+```{r echo=FALSE, warning=FALSE}
+table_data_1 <- data %>%
+  dplyr::select(dem_age, dem_sex, dem_religion, dem_edu, dem_relationship, dem_child) %>%
+  mutate(dem_sex = factor(dem_sex,
+                          levels = c(1, 2, 3, 999),
+                          labels = c("Male", "Female", "Other", "Prefer not to answer")),
+         dem_religion = factor(dem_religion, 
+                               levels = c(0:8, 999),
+                               labels = c("None", "Roman Chatholic", "Orthodox", "Protestant", "Jewish", "Hindu", "Muslim", "Buddhist", "Other", "Prefer not to answer")),
+         dem_edu = factor(dem_edu,
+                          levels = c(0:6,999),
+                          labels = c("Never been", "Elementary school", "High School", "Higher degree, below university", "Bachelor's", "Master's", "Doctorate/PhD", "Prefer not to answer")),
+         dem_relationship = factor(dem_relationship,
+                          levels = c(0:3, 999),
+                          labels = c("Single", "In a relationship", "Married/Common-Law", "Separated/Divorced","Prefer not to answer")),
+         dem_child = factor(dem_child, 
+                               levels = c(0, 1, 999),
+                               labels = c("Yes", "No", "Prefer not to answer")))
+
+
+label(table_data_1$dem_sex) <- "Sex"
+label(table_data_1$dem_age) <- "Age"
+label(table_data_1$dem_edu) <- "Education"
+label(table_data_1$dem_religion) <- "Religious orientation"
+label(table_data_1$dem_relationship) <- "Relationship status"
+label(table_data_1$dem_child) <- "Have children?"
+
+units(table_data_1$dem_age) <- "years"
+
+table1(~ dem_age + dem_sex + dem_religion + dem_edu + dem_relationship + dem_child,
+       data = table_data_1)
+```
+
+*NOTE*: The number in the table might be lower than the number of
+complete responses reported on the front page. This is because the
+analyses are limited to participants who are between 18 and 65 years of
+age, have correctly consented and responded to the bot check question.
+
+\newpage
+
+### Medical information
+
+All participants were asked to self-report medical information. On
+average participants were diagnosed at 23.4 years. Less than 9% (62) of
+the participants have been diagnosed before the age of 15. The purpose
+of the study was to capture adolescence and young adults. Figure 2 shows
+the distribution of ages at diagnosis.
+
+```{r echo=FALSE, warning=FALSE, fig.width=5, fig.height=3, fig.align='center', fig.cap = "Fig. 1.2: Distribution of age at diagnosis"}
+data %>%
+  ggplot(aes(x = med_cancerage)) +
+  geom_histogram(aes(y=..density..), bins = 30, color = "black", fill="lightblue") +
+  geom_density(fill = "#FF6666", alpha = 0.2) +
+  theme_bw() +
+  scale_x_continuous(breaks = seq(0, 40, by=2)) +
+  labs(title = " ",
+       x = "Age at diagnosis",
+       y = "Density/Count")
+
+#The table below shows the cumulative number of participants below a certain age at diagnosis.
+# data %>%
+#   dplyr::select(med_cancerage) %>%
+#   filter(med_cancerage < 15) %>%
+#   group_by(med_cancerage) %>%
+#   count() %>%
+#   ungroup() %>%
+#   mutate(cum.sum = cumsum(n)) %>%
+#   kable(col.names = c("Age at diag.", "N", "Cumulative sum")) %>%
+#   kable_styling("hover", full_width = FALSE, latex_options = "HOLD_position")
+```
+
+The majority of our participants, 59.2% were treated in adult settings,
+20.3% were treated in specialist young adult settings, and 7.4% were
+treated primarily in the pediatric settings. Almost 63% of participants
+were still in active treatment, and 32.5% reported that their treatment
+did not directly cause infertility. More medical information is
+presented in Table X and the types of diagnoses reported are summarized
+in Table 1.4.
+
+```{r echo=FALSE, warning=FALSE}
+table_data_2 <- data %>%
+  dplyr::select(med_cancerage, med_cancerdx, contains("med_cancertx"), med_hospital, med_wheretx, med_currenttx, med_txcomplete, med_txinfertility) %>%
+  mutate(med_cancertx_oth = case_when(med_cancertx_4 == "Y" | med_cancertx_5 == "Y" | med_cancertx_6 == "Y" ~ "Y")) %>%
+  dplyr::select(-med_cancertx_4, -med_cancertx_5, -med_cancertx_6) %>%
+  replace_na(list(med_cancertx_1 = 0, med_cancertx_2 = 0, med_cancertx_3 = 0, med_cancertx_7 = 0, med_cancertx_oth = 0)) %>%
+  mutate(med_treatment = case_when(med_cancertx_1 == "Y" & med_cancertx_2 == 0 & med_cancertx_3 == 0 & med_cancertx_7 == 0 & med_cancertx_oth == 0  ~ "Surgery",
+                                   med_cancertx_1 == 0 & med_cancertx_2 == "Y" & med_cancertx_3 == 0 & med_cancertx_7 == 0 & med_cancertx_oth == 0  ~ "Chemotherapy",
+                                   med_cancertx_1 == 0 & med_cancertx_2 == 0 & med_cancertx_3 == "Y" & med_cancertx_7 == 0 & med_cancertx_oth == 0  ~ "Radiotherapy",
+                                   med_cancertx_1 == 0 & med_cancertx_2 == "Y" & med_cancertx_3 == "Y" & med_cancertx_7 == 0 & med_cancertx_oth == 0  ~ "Chemo + Radio",
+                                    med_cancertx_1 == "Y" & med_cancertx_2 == "Y" & med_cancertx_3 == "Y" & med_cancertx_7 == 0 & med_cancertx_oth == 0  ~ "Chemo + Radio + Surgery",
+                                     med_cancertx_7 == "Y" ~ "Transplant",
+                                    med_cancertx_1 == 0 & med_cancertx_2 == 0 & med_cancertx_3 == 0 & med_cancertx_7 == 0 & med_cancertx_oth == "Y"  ~ "Other"
+                                   )) %>%
+  dplyr::select(-contains("med_cancertx")) %>%
+  mutate(med_hospital = factor(med_hospital,
+                          levels = c(1:4),
+                          labels = c("Regional/Local clinic", "Regional hospital w/ University", "Major city hospital w/ University", "Major city hospital, not Univeristy")),
+         med_wheretx = factor(med_wheretx,
+                               levels = c(0, 1, 2, 3, 999),
+                               labels = c("Pediatric ward", "Young adult ward", "Adult ward", "Mixed service", "Prefer not to answer")),
+         med_currenttx = factor(med_currenttx,
+                          levels = c(0, 1),
+                          labels = c("No", "Yes")),
+         med_txcomplete = factor(med_txcomplete,
+                                 levels = c(0, 1, 2, 3, 4, 5),
+                                 labels = c("Less than 6mo ago", "6 - 12 mo ago", "1 - 2 years ago", "2 - 5 years ago", "5 - 10 years ago", "More than 10 years ago")),
+         med_txinfertility = factor(med_txinfertility,
+                                    levels = c(0, 1, 2),
+                                    labels = c("No", "Yes", "Don't know/Don't remember")))
+
+label(table_data_2$med_cancerage) <- "Age at diagnosis"
+label(table_data_2$med_cancerdx) <- "Cancer diagnosis"
+label(table_data_2$med_treatment) <- "Type of treatment"
+label(table_data_2$med_hospital) <- "Type of clinic"
+label(table_data_2$med_wheretx) <- "Type of ward"
+label(table_data_2$med_currenttx) <- "Currently in treatment?"
+label(table_data_2$med_txcomplete) <- "How long ago did you complete it?"
+label(table_data_2$med_txinfertility) <- "Treatment causes infertility?"
+
+units(table_data_2$med_cancerage) <- "years"
+
+table1(~ med_cancerage + med_treatment + med_hospital + med_wheretx + med_currenttx + med_txcomplete + med_txinfertility,
+       data = table_data_2)
+```
+
+\*Other treatment includes immunotherapy or other targeted therapies,
+intervention radiology treatments and other options not listed
+
+\newpage
+
+#### Table 1.4 continuted: Types of cancer
+
+```{r echo=FALSE, warning=FALSE}
+table_data_2c <- table_data_2 %>%
+  dplyr::select(med_cancerdx) %>%
+  mutate(med_cancerdx_2 = case_when(med_cancerdx == "leuk" | med_cancerdx == "lymph" ~ "Hematologic",
+                                    med_cancerdx == "brain" | med_cancerdx == "cns" ~ "Brain & CNS",
+                                    med_cancerdx == "colre" | med_cancerdx == "gastr" ~ "Colon, Rectal, Gastric",
+                                    med_cancerdx == "cerv" | med_cancerdx == "endo" | med_cancerdx == "ovari" ~ "Cervical, Ovarian, Endometrial",
+                                    med_cancerdx == "breas" ~ "Breast",
+                                    med_cancerdx == "sarco" ~ "Sarcomas",
+                                    med_cancerdx == "bladd" | med_cancerdx == "kidn" | med_cancerdx == "liver" ~ "Bladder, Kidney, Liver",
+                                    med_cancerdx == "lung" ~ "Lung",
+                                    med_cancerdx == "mela" ~ "Melanoma",
+                                    med_cancerdx == "pancr" ~ "Pancreatic",
+                                    med_cancerdx == "testi" ~ "Testicular",
+                                    med_cancerdx == "thyro" ~ "Thyroid",
+                                    med_cancerdx == "prost" ~ "Prostate",
+                                    med_cancerdx == "other" ~ "Other"
+                                    ))
+
+label(table_data_2c$med_cancerdx_2) <- "Cancer diagnosis"
+
+table1(~ med_cancerdx_2,
+       data = table_data_2c)
+```
+
+\newpage
+
+# PART 2: Fertility preservation service: Awareness, satisfaction, and preferences
+
+### Were you informed that infertility is a late effect risk?
+
+Participants were first asked if their treatment posed a risk to
+fertility and subsequently if fertility was discussed as a late effect.
+The majority of the participants reported having discussed infertility
+as a possible late effect, however, a small proportion (12%) did not
+discuss it despite having received fertility-compromising medical
+treatment. See Figure 3 for a complete breakdown.
+
+```{r echo=FALSE, warning=FALSE, fig.cap="Fig. 2.1: Fertility discussions based on the risk of infertility", fig.align='center'}
+# This is the data table
+# data %>%
+#   dplyr::select(awareness_1, med_txinfertility) %>%
+#   mutate(awareness_1 = factor(awareness_1,
+#                           levels = c(0, 1, 2),
+#                           labels = c("No", "Yes", "Don't remember"))) %>%
+#   group_by(med_txinfertility, awareness_1) %>%
+#   count() %>%
+#   group_by(med_txinfertility) %>%
+#   mutate(sum = sum(n),
+#          prop = n/sum,
+#          prop = paste0(round(prop, 2)*100, "%")) %>%
+#   dplyr::select(-sum) %>%
+#   kable(col.names = c("Response", "N", "Sum", "Proportion")) %>%
+#   kable_styling("hover", full_width = FALSE, latex_options = "HOLD_position")
+
+data %>%
+  dplyr::select(awareness_1, med_txinfertility) %>%
+  mutate(awareness_1 = factor(awareness_1,
+                          levels = c(0, 1, 2),
+                          labels = c("No", "Yes", "Don't \nremember"))) %>%
+  group_by(med_txinfertility, awareness_1) %>%
+  count() %>%
+  group_by(med_txinfertility) %>%
+  mutate(sum = sum(n),
+         prop = n/sum*100) %>%
+  ungroup() %>%
+  ggplot(aes(x = awareness_1, y = prop)) +
+  geom_col(aes(fill = awareness_1)) +
+  facet_grid(~factor(med_txinfertility), labeller = as_labeller(response)) +
+  geom_text(aes(label = paste0("n = ", n), y = prop - 2), size = 3) +
+  labs(title = " ", 
+       y = "Proportion (%)",
+       x = "Was fertility discussed?") + 
+  ylim(0, 100) +
+  theme_classic(base_size = 12) +
+  theme(legend.position = "none",
+        strip.text = element_text(face = 'bold'),
+        #panel.grid.major.x = element_line(),
+        panel.grid.major.y = element_line())
+```
+
+### Discussion about fertility by country cluster
+
+Observations were grouped into the country clusters and responses were
+compared between these.
+
+```{r echo=FALSE, warning=FALSE}
+pt1 <- data %>%
+  dplyr::select(awareness_1, dem_cluster) %>%
+  mutate_all(as.factor)
+
+chsq_awareness_1 <- infer::chisq_test(pt1, awareness_1 ~ dem_cluster)
+```
+
+There were significant differences in the proportion of individuals who
+were informed about the possibility of infertility between the country
+clusters, $\chi^2$ (`r chsq_awareness_1[[1,2]]`, `r nrow(pt1)`) =
+`r round(chsq_awareness_1[[1,1]],2)`, *p* =
+`r round(chsq_awareness_1[[1,3]],3)`, with effect size *Cramer V* =
+`r round(cramerV(pt1$awareness_1, pt1$dem_cluster, bias.correct = TRUE),2)`.
+Particularly in Cluster 4, Eastern European countries A, we see that the
+majority of participants (53%) did not report having discussed
+infertility. See Figure 4.
+
+```{r echo=FALSE, warning=FALSE, fig.width=6, fig.height=5, fig.align='center', fig.cap="Fig. 2.2: Information about infertility by country cluster"}
+data %>%
+  dplyr::select(awareness_1, dem_cluster) %>%
+  mutate(awareness_1 = factor(awareness_1,
+                          levels = c(0, 1, 2),
+                          labels = c("No", "Yes", "Don't \nremember"))) %>%
+  group_by(awareness_1, dem_cluster) %>%
+  count() %>%
+  group_by(dem_cluster) %>%
+  mutate(sum = sum(n),
+         prop = n/sum,
+         prop = round(prop, 2)*100) %>%
+  dplyr::select(-sum) %>%
+  mutate(awareness_1 = as.factor(awareness_1),
+         awareness_1 = fct_reorder(awareness_1, prop)) %>%
+  ggplot(aes(x = prop, y = awareness_1, fill = awareness_1)) + 
+  geom_col() + 
+  geom_text(aes(label = paste0(prop, "%"), x = prop + 11)) +
+  labs(title = " ", 
+       x = "Proportion",
+       y = " ") + 
+  xlim(0, 100) +
+  theme_classic(base_size = 12.5) +
+  theme(legend.position = "none",
+        strip.text = element_text(face = 'bold'),
+        panel.grid.major.x = element_line()) +
+  scale_fill_viridis_d(begin = 0.3, end = 0.8) +
+  facet_wrap(~dem_cluster, labeller = as_labeller(cluster_names))
+```
+
+Furthermore, participants reported the type of service they received
+during treatment. Comparison was done based on the type of ward in order
+to observe any differences between pediatric, young adult, and adult
+services.
+
+```{r echo=FALSE, warning=FALSE}
+pt2 <- data %>%
+  dplyr::select(awareness_1, med_wheretx) %>%
+  mutate_all(as.factor)
+
+chsq_awareness_2 <- infer::chisq_test(pt2, awareness_1 ~ med_wheretx)
+```
+
+Significant differences were observed in the proportion of individuals
+who were informed about the possibility of infertility between different
+service type, $\chi^2$ (`r chsq_awareness_2[[1,2]]`, `r nrow(pt2)`) =
+`r round(chsq_awareness_2[[1,1]],2)`, *p* =
+`r round(chsq_awareness_2[[1,3]],3)`, with effect size *Cramer V* =
+`r round(cramerV(pt2$awareness_1, pt2$med_wheretx, bias.correct = TRUE),2)`.
+Fertility was discussed significantly less in the pediatric service
+compared to young adult, adult, or mixed services. See Figure 5 for
+complete breakdown.
+
+```{r echo=FALSE, warning=FALSE, fig.width=6, fig.height=5, fig.align='center', fig.cap="Fig. 2.3: Fertility discussions based on the type of ward"}
+data %>%
+  dplyr::select(awareness_1, med_wheretx) %>%
+  mutate(med_wheretx = factor(med_wheretx,
+                               levels = c(0, 1, 2, 3, 999),
+                               labels = c("Pediatric ward", "Young adult ward", "Adult ward", "Mixed service", "Prefer not to answer"))) %>%
+  filter(med_wheretx != "Prefer not to answer") %>%
+  mutate(awareness_1 = factor(awareness_1,
+                          levels = c(0, 1, 2),
+                          labels = c("No", "Yes", "Don't \nremember"))) %>%
+  group_by(awareness_1, med_wheretx) %>%
+  count() %>%
+  group_by(med_wheretx) %>%
+  mutate(sum = sum(n),
+         prop = n/sum,
+         prop = round(prop, 2)*100) %>%
+  dplyr::select(-sum) %>%
+  mutate(awareness_1 = as.factor(awareness_1),
+         awareness_1 = fct_reorder(awareness_1, prop)) %>%
+  ggplot(aes(x = prop, y = factor(awareness_1, level = c("Don't \nremember", "No",'Yes')), fill = awareness_1)) + 
+  geom_col() + 
+  geom_text(aes(label = paste0(prop, "%"), x = prop + 11)) +
+  labs(title = " ", 
+       x = "Proportion",
+       y = " ") + 
+  xlim(0, 100) +
+  theme_classic(base_size = 12.5) +
+  theme(legend.position = "none",
+        strip.text = element_text(face = 'bold'),
+        panel.grid.major.x = element_line()) +
+  scale_fill_viridis_d(begin = 0.3, end = 0.8) +
+  facet_wrap(~med_wheretx)
+```
+
+\newpage
+
+### Information about medical options available for fertility preservation
+
+In addition to having discussed fertility, participants were asked if
+they also had a chance to discuss medical options for fertility
+preservation. The majority, regardless of whether or not their treatment
+posed risk to fertility, had the chance to discuss medical options.
+However, 1 out of 4 participants whose fertility was compromised by
+treatment did not discuss medical options for fertility preservation.
+See Figure 2.4.
+
+```{r echo=FALSE, warning=FALSE, fig.align='center', fig.cap="Fig. 2.4: Discussion about medical option for fertility preservation"}
+## This is raw data table to feed into the graph
+# data %>%
+#   dplyr::select(awareness_2, med_txinfertility) %>%
+#   mutate(awareness_2 = factor(awareness_2,
+#                           levels = c(0, 1, 2),
+#                           labels = c("No", "Yes", "Don't \nremember"))) %>%
+#   group_by(med_txinfertility, awareness_2) %>%
+#   count() %>%
+#   group_by(med_txinfertility) %>%
+#   mutate(sum = sum(n),
+#          prop = n/sum*100)
+
+data %>%
+  dplyr::select(awareness_2, med_txinfertility) %>%
+  mutate(awareness_2 = factor(awareness_2,
+                          levels = c(0, 1, 2),
+                          labels = c("No", "Yes", "Don't \nremember"))) %>%
+  group_by(med_txinfertility, awareness_2) %>%
+  count() %>%
+  group_by(med_txinfertility) %>%
+  mutate(sum = sum(n),
+         prop = n/sum*100) %>%
+  ungroup() %>%
+  ggplot(aes(x = awareness_2, y = prop)) +
+  geom_col(aes(fill = awareness_2)) +
+  facet_grid(~factor(med_txinfertility), labeller = as_labeller(response)) +
+  geom_text(aes(label = paste0("n = ", n), y = prop - 2), size = 3) +
+  labs(title = " ", 
+       y = "Proportion (%)",
+       x = "Were medical options discussed?") + 
+  ylim(0, 100) +
+  theme_classic(base_size = 12) +
+  theme(legend.position = "none",
+        strip.text = element_text(face = 'bold'),
+        #panel.grid.major.x = element_line(),
+        panel.grid.major.y = element_line())
+```
+
+Among individuals who were informed about medical options for fertility
+preservation (*N* = 366), 26% were informed about this at the time of
+diagnosis, and 54% some time after the diagnosis, but before the
+treatment. See Table 2.1.
+
+#### Table 2.1: At what point were you informed about medical options for fertility preservation?
+
+```{r echo=FALSE, warning=FALSE}
+data %>%
+  dplyr::select(contains("awareness")) %>%
+  dplyr::select(awareness_3) %>%
+  drop_na() %>%
+  mutate(awareness_3 = factor(awareness_3,
+                          levels = c(1:5),
+                          labels = c("At diagnosis", "After diagnosis, before treatment", "While in treatment", "After finishing treatment","Don't remember"))) %>%
+  group_by(awareness_3) %>%
+  count() %>%
+  ungroup() %>%
+  mutate(sum = sum(n),
+         prop = n/sum,
+         prop = paste0(round(prop, 2)*100, "%")) %>%
+  dplyr::select(-sum) %>%
+  kable(col.names = c("Response", "N", "Proportion")) %>%
+  kable_styling("hover", full_width = FALSE, latex_options = "HOLD_position")
+```
+
+Furthermore, individual who were informed about fertility preservation
+options reported that oncologist was most commonly the person to have
+informed them and provided most relevant information (41%). Some
+individuals reported educational material and cancer peer support were
+the most informative sources. See Table 2.2.
+
+#### Table 2.2: Who or what course provided the most relevant and useful information?
+
+```{r echo=FALSE, warning=FALSE}
+data %>%
+  dplyr::select(contains("awareness")) %>%
+  dplyr::select(awareness_4) %>%
+  drop_na() %>%
+  mutate(awareness_4 = factor(awareness_4,
+                          levels = c(1:7),
+                          labels = c("Oncologist", "Another HCP", "Educational material", "Friends/family", "Cancer charity/cancer peer support", "I sought information myself", "Other"))) %>%
+  group_by(awareness_4) %>%
+  count() %>%
+  ungroup() %>%
+  mutate(sum = sum(n),
+         prop = n/sum,
+         prop = paste0(round(prop, 2)*100, "%")) %>%
+  dplyr::select(-sum) %>%
+  kable(col.names = c("Response", "N", "Proportion")) %>%
+  kable_styling("hover", full_width = FALSE, latex_options = "HOLD_position")
+```
+
+### Access to fertility preservation by country clusters
+
+Among our sample, 80% of those who were informed about fertility
+preservation decided to pursue it.
+
+```{r echo=FALSE, warning=FALSE}
+pt3 <- data %>%
+  dplyr::select(availability_1, dem_cluster) %>%
+  mutate_all(as.factor) %>%
+  drop_na()
+
+chsq_awareness_3 <- infer::chisq_test(pt3, availability_1 ~ dem_cluster)
+```
+
+There were significant differences in the proportion of individuals who
+accessed fertility preservation between the country clusters, $\chi^2$
+(`r chsq_awareness_3[[1,2]]`, `r nrow(pt3)`) =
+`r round(chsq_awareness_3[[1,1]],2)`, *p* \< 0.001,
+<!-- `r round(chsq_awareness_3[[1,3]],4)`--> with effect size *Cramer V*
+=
+`r round(cramerV(pt3$availability_1, pt3$dem_cluster, bias.correct = TRUE),2)`.
+The lowest access was reported in Cluster 5, Eastern European countries
+B, where only 57% of participants reported accessing fertility
+preservation services, compared to other clusters where a great majority
+reported having accessed fertility preservation (See Figure 2.5).
+
+```{r t-test for sex in acess, echo=FALSE}
+t_test_acess <- data %>%
+  dplyr::select(dem_sex, availability_1) %>%
+  filter(dem_sex %in% c(1:2)) %>%
+  filter(availability_1 %in% c(1:2)) %>%
+  drop_na() %>%
+  mutate_all(as.factor)
+
+# table(t_test_acess$dem_sex, t_test_acess$availability_1)
+
+chsq_awareness_acess <- infer::chisq_test(t_test_acess, availability_1 ~ dem_sex)
+
+# t_test_acess %>%
+#   ggplot(aes(y = availability_1, fill = dem_sex))+
+#   geom_bar(position = "dodge")
+```
+
+Among individuals who were informed about fertility preservation
+options, significantly more men decided to pursue it compared to women
+(*N* = 166 v. *N* = 127, $\chi^2$ (`r chsq_awareness_acess[[1,2]]`,
+`r nrow(t_test_acess)`) = `r round(chsq_awareness_acess[[1,1]],2)`, *p*
+\< 0.001).
+
+```{r echo=FALSE, warning=FALSE, fig.width=8, fig.height=5, fig.align='center', fig.cap="Fig. 2.5: Access to fertility preservation by country cluster"}
+data %>%
+  dplyr::select(availability_1, dem_cluster) %>%
+  mutate(availability_1 = factor(availability_1,
+                          levels = c(0, 1, 2),
+                          labels = c("No", "Yes", "No"))) %>%
+  group_by(availability_1, dem_cluster) %>%
+  drop_na() %>%
+  count() %>%
+  group_by(dem_cluster) %>%
+  mutate(sum = sum(n),
+         prop = n/sum,
+         prop = round(prop, 2)*100) %>%
+  dplyr::select(-sum) %>%
+  mutate(availability_1 = as.factor(availability_1),
+         availability_1 = fct_reorder(availability_1, prop)) %>%
+  ggplot(aes(x = prop, y = availability_1, fill = availability_1)) + 
+  geom_col() + 
+  geom_text(aes(label = paste0(prop, "%"), x = prop + 8)) +
+  labs(title = " ", 
+       x = "Proportion",
+       y = " ") + 
+  xlim(0, 100) +
+  theme_classic(base_size = 12.5) +
+  theme(legend.position = "none",
+        strip.text = element_text(face = 'bold'),
+        panel.grid.major.x = element_line()) +
+  scale_fill_viridis_d(begin = 0.3, end = 0.8) +
+  facet_wrap(~dem_cluster, labeller = as_labeller(cluster_names))
+```
+
+\newpage
+
+### Satisfaction and preferences in receiving fertility-related information
+
+Participants who received information about fertility preservation
+options (*N* = 366) were asked how satisfied they were with the
+provision of this information. The majority, 60%, was satisfied, 20%
+were neither satisfied or dissatisfied, and 20 % were dissatisfied.
+Regardless of the response, participants were asked to report what
+factors contributed to their level of satisfaction. Short qualitative
+answers were analysed for content and grouped by themes. Table 2.3
+summarizes the responses. An independent samples t-test revealed no
+significant differences in satisfaction levels (continuous value from 1
+- 5) between men and women, *t*(352) = - 0.001, *p* = 0.99.
+
+```{r t-test, table for satisfaction, echo=FALSE, warning=FALSE}
+# t_test_1<-data %>%
+#   dplyr::select(dem_sex, contains("awareness")) %>%
+#   dplyr::select(dem_sex, awareness_5_sq__1) %>%
+#   filter(dem_sex %in% c(1:2)) %>%
+#   drop_na()
+# 
+# t.test(awareness_5_sq__1 ~ dem_sex, 
+#        data = t_test_1,
+#        alternative = "two.sided", var.equal = FALSE)
+# 
+# table(t_test_1$awareness_5_sq__1, t_test_1$dem_sex)
+# ggplot(t_test_1, aes(y = awareness_5_sq__1, x = factor(dem_sex)))+
+#   geom_boxplot()
+# var.test(ClevelandSpending, NYSpending)
+# t.test()
+###########
+# data %>%
+#   dplyr::select(contains("awareness")) %>%
+#   dplyr::select(awareness_5_sq__1) %>%
+#   drop_na() %>%
+#   mutate(awareness_5_sq__1 = factor(case_when(awareness_5_sq__1 == 0 | awareness_5_sq__1 == 1 ~ "Dissatisfied",
+#                                               awareness_5_sq__1 == 2 ~ "Neither",
+#                                               awareness_5_sq__1 == 3 | awareness_5_sq__1 == 5 ~ "Satisfied"))) %>%
+#   group_by(awareness_5_sq__1) %>%
+#   count() %>%
+#   ungroup() %>%
+#   mutate(sum = sum(n),
+#          prop = n/sum,
+#          prop = paste0(round(prop, 2)*100, "%")) %>%
+#   #dplyr::select(-sum) %>%
+#   kable(col.names = c("Response", "N", "Sum","Proportion")) %>%
+#   kable_styling("hover", full_width = FALSE, latex_options = "HOLD_position")
+
+# data %>%
+#   dplyr::select(awareness_5_sq__1, awareness_6) %>%
+#   drop_na() %>%
+#   mutate(awareness_5_sq__1 = factor(case_when(awareness_5_sq__1 == 0 | awareness_5_sq__1 == 1 ~ "Dissatisfied",
+#                                               awareness_5_sq__1 == 2 ~ "Neither",
+#                                               awareness_5_sq__1 == 3 | awareness_5_sq__1 == 5 ~ "Satisfied"))) %>%
+#   filter(awareness_5_sq__1 == "Dissatisfied")
+```
+
++---------------------------------+---------------------------------+
+| Common reasons for              | Common reasons for              |
+| satisfaction:                   | dissatisfaction:                |
++=================================+=================================+
+| -   Clear, detailed and         | -   The preferred option of FP  |
+|     straightforward             |     not available or possible   |
+|     information,                |     due to late cancer          |
+| -   Steps involved in fertility |     detection                   |
+|     preservation were           | -   Received the information    |
+|     explained,                  |     but had to initiate FP      |
+| -   Kind, supportive and        |     themselves                  |
+|     trustworthy personnel,      | -   Lack of adequate            |
+| -   Seamless communication      |     information and costs       |
+|     between relevant medical    |     involved (hidden costs)     |
+|     departments,                | -   Limited options for FP      |
+| -   Several people also         | -   Experiencing pain or        |
+|     mentioned that they were    |     discomfort due to FP or     |
+|     satisfied because of the    |     fertility related           |
+|     psychological counselling   |     questions/difficulties      |
+|     that was involved           | -   Feeling rushed to make a    |
+|                                 |     decision                    |
+|                                 | -   Dismissal of the emotional  |
+|                                 |     aspect of fertility-related |
+|                                 |     difficulties                |
++---------------------------------+---------------------------------+
+
+*NOTE*: FP = Fertility preservation
+
+## Preference in receiving information related to fertility preservation
+
+Individuals were asked to rank their preferences when gathering
+information related to fertility preservation. Most people endorsed
+**hard copies** (e.g. brochures, pamphlets, books) and **online written
+communications**, such as dedicated websites as preferred (126 and 110
+ranked it as first, respectively). These resources were followed by
+communication face-to-face, virtual consultations, and least favorable
+were online messenger and over the phone.
+
+```{r echo=FALSE, warning=FALSE}
+# data %>%
+#   dplyr::select(contains("preference_source")) %>%
+#   pivot_longer(cols = c(preference_source_1:preference_source_6),
+#                names_to = "option",
+#                values_to = "rank") %>%
+#  # filter(rank == 1) %>%
+#   group_by(option, rank) %>%
+#   count() %>%
+#   group_by(option) %>%
+#   mutate(sum = sum(n),
+#          prop = round(n/sum*100,1)) %>%
+#   ggplot(aes(x = factor(rank), y = option, fill = n)) +
+#   geom_tile() +
+#   geom_text(aes(label = paste0(n, " "))) +
+#   scale_fill_viridis_c() +
+#   scale_y_discrete(limits=rev)
+```
+
+Participants also reported the level of importance of different parties
+being involved in the decision-making process related to
+fertility-preservation. In addition to fertility specialists and medical
+oncologists, participants reported that psychologists are important too.
+See Figure 2.5.
+
+## NB - this figure will be re-done to make it easier to read/interpret the results
+```{r echo=FALSE, warning=FALSE, message=FALSE, fig.width=9, fig.height=8, fig.align='center', fig.cap="Fig. 2.6: Importance of different people involved in the decision-making process"}
+data %>%
+  dplyr::select(contains("preference_decision")) %>%
+  pivot_longer(cols = c(preference_decision_sq__1:preference_decision_sq__8),
+               names_to = "party",
+               values_to = "importance") %>%
+  mutate(party = case_when(party == "preference_decision_sq__1" ~ "1 Fertility preservation specialist",
+                           party == "preference_decision_sq__2" ~ "2 Oncologist",
+                           party == "preference_decision_sq__3" ~ "3 Entire medical team",
+                           party == "preference_decision_sq__4" ~ "4 Psychologist",
+                           party == "preference_decision_sq__5" ~ "5 Social worker",
+                           party == "preference_decision_sq__6" ~ "6 Partner",
+                           party == "preference_decision_sq__7" ~ "7 Parents/Care-giver",
+                           party == "preference_decision_sq__8" ~ "8 Cancer peers/organizations")) %>%
+  group_by(party, importance) %>%
+  count() %>%
+  filter(importance != 999) %>%
+  group_by(party) %>%
+  mutate(sum= sum(n),
+         prop = n/sum,
+         prop = round(prop, 2)*100,
+         # prop2 = paste0(prop, "%")
+         ) %>%
+  mutate(importance2 = case_when(importance == 0|importance == 1 | importance == 2 ~ 0,
+                                 importance == 3| importance == 4 ~ 1)) %>%
+  group_by(importance2, party) %>%
+  mutate(sum_n = sum(n),
+         start = 0) %>%
+  ungroup() %>%
+  group_by(party) %>%
+  mutate(start_adj = start - min(sum_n),
+         end_adj = start + max(sum_n),
+         item = as.numeric(parse_number(party)),
+         answer = as.factor(importance)) %>%
+  ungroup() %>%
+  ggplot(aes(x = party, y = prop, fill = factor(-importance))) +
+  geom_col() +
+  coord_flip() +
+  labs(title = " ", 
+       y = "Proportion (%)",
+       x = " ") +
+  theme_classic(base_size = 11) +
+  scale_fill_discrete(breaks = c("0","-1", "-2", "-3", "-4"),
+                   labels = c("Not \nimportant",
+                              "Slightly \nimportant",
+                              "Fairly \nimportant",
+                              "Important",
+                              "Very \nimportant"))
+```
+
+## Discussion: Fertility preservation awareness, access, satisfaction and preferences
+
+The first part of our online survey aimed at establishing a general
+understanding of the current levels of awareness of infertility as a
+late effect of cancer treatment, awareness and access to medical options
+for preserving fertility, and individual preferences in receiving
+fertility-related information. Our results suggest that the majority of
+young people received some form of communication related to fertility
+from the health-care team. Despite that, it is important to note that
+significant differences exist, in particular between country clusters
+and treatment settings. Eastern European countries A cluster (including
+Bulgaria, Hungary, Latvia, Lithuania, Slovakia, and Romania) reported
+significantly fewer discussion about infertility as a potential late
+effect. Similarly, fertility was significantly less discussed on the
+pediatric wards compared to young adult, adult, or mixed service wards,
+a findings in line with the existing literature (REF).
+
+Literature suggests that fertility counselling or discussion occur at
+relatively high rates, from 19 - 61% in the USA [@young2019a;
+\@letourneau2012] or in an AYA sample in Japan (both samples included
+female participants only), however, despite these consultations, rates
+of actual access to procedures tend to be lower, from 4% in the USA to X
+in the Japanese sample. Similar pattern has been observed in our study -
+80% of informed individuals decided to pursue some sort of fertility
+preservation, among these significantly fewer women compared to men.
+Furthermore, we also observed significant differences between country
+clusters, and particularly in European Countries B (Croatia, Czechia,
+Estonia, Poland, Slovenia), 43% of participants did not opt for
+fertility preservation.
+
+Discussions related to fertility are important and need to happen early
+on. Our participants reported having received information related to
+fertility preservation either at the time of diagnosis or more commonly,
+sometime before treatment. Some of our participants also reported having
+learned about fertility preservation during or after treatment. A
+similar findings has been reported by \@furui2019 who found that only
+42% of the AYA sample received information on fertility preservation
+methods pre-treatment. While it is important to consider and weigh the
+urgency of treatment initiation against the need for fertility
+preservation, the initial phases of receiving diagnosis can be
+overwhelming (REF) and oncologists may place priority on controlling the
+disease instead of fertility and similar psycho-social aspects (REF).
+While the majority of our participants reported to be satisfied with
+their fertility-preservation services, a proportion was not. At least in
+part, some of reasons for dissatisfaction that were reported can be
+addressed in the future (e.g. lack of adequate information, hidden
+costs).
+
+Some oncology centers readily employ multidisciplinary teams that helps
+young patients navigate the challenges of illness, however, these are
+not the norm (REF). Young people report the need for psychological
+support in treatment and fertility decision-making [@logan2019a]. In
+addition to having psychological support, our participants reported the
+wish for the entire medical team to be involved (See Figure 2.6).
+
+While not all cancer treatments pose direct direct risk to fertility, it
+is important that fertility-related information is conveyed to patients
+as they navigate through the initial phases of the illness. This should
+be done by fertility specialist who work in tandem with the oncology
+team, as well as psychological support, and parents or caregivers where
+appropriate. Young people appreciate having agency and like to be
+involved in the decision-making processes (REF). When providing them
+with the relevant resources that go beyond face-to-face consultations
+with experts, we should make sure to provide reliable informational
+resources.
+
+\newpage
+
+# PART 3: Quality of life and well-being
+
+```{r echo=FALSE, warning=FALSE}
+whoqol_total_alpha <- data %>%
+  dplyr::select(contains("whoqol")) %>%
+  dplyr::select(-whoqol_total, -whoqol_physical, -whoqol_psych, -whoqol_social, -whoqol_environ) %>%
+  psych::alpha(check.keys = TRUE)
+
+whoqol_physical_alpha <- data %>%
+  dplyr::select(whoqol_3_1, whoqol_3_2, whoqol_5_1, whoqol_6_1, whoqol_7_1, whoqol_7_2, whoqol_7_3) %>%
+  psych::alpha(check.keys = TRUE)
+
+whoqol_psych_alpha <- data %>%
+  dplyr::select(whoqol_3_3, whoqol_3_4, whoqol_4_1, whoqol_5_2, whoqol_7_4) %>%
+  psych::alpha(check.keys = TRUE)
+
+whoqol_social_alpha <- data %>%
+  dplyr::select(whoqol_7_5, whoqol_7_6, whoqol_7_7) %>%
+  psych::alpha(check.keys = TRUE)
+
+whoqol_environ_alpha <- data %>%
+  dplyr::select(whoqol_4_2, whoqol_4_3, whoqol_5_3, whoqol_5_4, whoqol_5_5,
+                whoqol_7_8, whoqol_7_9, whoqol_7_10) %>%
+  psych::alpha(check.keys = TRUE)
+
+```
+
+Quality of life was measured using the brief version of WHOQOL
+[@whoqol]. The mean overall quality of life score was
+`r round(mean(data$whoqol_total),2)` (*SD*
+=`r round(sd(data$whoqol_total),2)`). Internal consistency (Cronbach
+$\alpha$) for the entire sample was high
+`r round(whoqol_total_alpha$total[[1]],2)`.
+
+The scale also measures various sub-domains of quality of life. Physical
+domain score: *M* = `r round(mean(data$whoqol_physical),2)` (*SD* =
+`r round(sd(data$whoqol_physical),2)`). Internal consistency (Cronbach
+$\alpha$) for the physical domain subscale sample was
+`r round(whoqol_physical_alpha$total[[1]],2)`. Psychological domain
+score: *M* = `r round(mean(data$whoqol_psych),2)` (*SD* =
+`r round(sd(data$whoqol_psych),2)`). Internal consistency (Cronbach
+$\alpha$) for the psychological domain subscale sample was
+`r round(whoqol_psych_alpha$total[[1]],2)`. Social domain score: *M* =
+`r round(mean(data$whoqol_social),2)` (*SD* =
+`r round(sd(data$whoqol_social),2)`). Internal consistency (Cronbach
+$\alpha$) for the social domain subscale sample was
+`r round(whoqol_social_alpha$total[[1]],2)`. Environmental domain score:
+*M* = `r round(mean(data$whoqol_environ),2)` (*SD* =
+`r round(sd(data$whoqol_environ),2)`). Internal consistency (Cronbach
+$\alpha$) for the social domain subscale sample was
+`r round(whoqol_environ_alpha$total[[1]],2)`.
+
+```{r t-test for sex in QOL, echo=FALSE, results=FALSE}
+t_test_qol <- data %>%
+  dplyr::select(dem_sex, whoqol_total, dem_cluster, dem_age, med_cancerage, med_currenttx, awareness_1) %>%
+  filter(dem_sex %in% c(1:2)) %>%
+  filter(awareness_1 %in% c(0:1)) %>%
+  mutate_at(c("dem_sex", "dem_cluster", "awareness_1", "med_currenttx"), as.factor)
+
+t.test(whoqol_total ~ dem_sex, 
+       data = t_test_qol,
+       alternative = "two.sided", var.equal = TRUE)
+
+t.test(whoqol_total ~ awareness_1, 
+       data = t_test_qol,
+       alternative = "two.sided", var.equal = FALSE)
+
+t.test(whoqol_total ~ med_currenttx, 
+       data = t_test_qol,
+       alternative = "two.sided", var.equal = FALSE)
+
+lm_age <- lm(whoqol_total ~ med_cancerage,
+             data = t_test_qol)
+summary(lm_age)
+```
+
+Univariate analyses revealed that compared to women, men reported
+significantly lower quality of life overall (*M* = 60.1 for women, *M* =
+55.3 for men, *t*(615) = - 4.46, *p* \< 0.001). Across the entire
+sample, quality of life did not differ based on whether or not fertility
+had been discussed (*t*(374.1) = - 0.89, *p* = 0.373), however, quality
+of life was significantly higher among individuals who were not in
+treatment at the time of the study (*M* = 61.6 for out of treatment v.
+*M* = 56.1 in-treatment, *t*(500) = 5.248, *p* \< 0.001). Lastly, higher
+age at diagnoses was significantly associated with higher overall
+quality of life (*F*(1, 615) = 5.651, *p* = 0.017).
+
+In addition to the univariate analyses we ran an adjusted multilevel
+linear model in order to account for the nesting structure of our data
+within country clusters. Adjusting for age at diagnosis, sex, current
+treatment status, quality of life differed significantly between those
+who discussed fertility versus those who have not within Eastern
+European B country cluster (*t* = 2.093, *p* = 0.036). The complete
+model parameters can be viewed in Table 3.1. Figure 3.1 represents the
+results visually.
+
+#### Table 3.1: Adjusted linear model for quality of life
+
+```{r anova, echo=FALSE, message=FALSE, warning=FALSE, results=TRUE}
+data_anova <- data %>%
+  dplyr::select(dem_sex, whoqol_total, dem_cluster, dem_age, med_cancerage, med_currenttx, awareness_1, phq_sum, phq_anxiety, phq_depression) %>%
+  filter(dem_sex %in% c(1:2)) %>%
+  filter(awareness_1 %in% c(0:1)) %>%
+  mutate_at(c("dem_sex", "dem_cluster", "awareness_1", "med_currenttx"), as.factor)
+
+## Nested ANOVA for QOL
+nest_qol <- stats::lm(whoqol_total ~ dem_cluster + med_cancerage + dem_sex + med_currenttx +
+                 dem_cluster / awareness_1,
+                data = data_anova)
+
+summary(nest_qol)
+## Inspect the residuals cluster has a significant effect on QOL but awareness has not
+# plot(nest_qol)
+
+## Get the Confidence Intervals
+# se <- sqrt(diag(vcov(nest_qol)))
+# (tab <- cbind(Est = coefficients(nest_qol), LL = coefficients(nest_qol) - 1.96 * se, UL = coefficients(nest_qol) + 1.96 *se))
+```
+
+```{r echo=FALSE, warning=FALSE, fig.width=8, fig.cap="Fig. 3.1: Quality of life by country cluster and fertility discussions", fig.align='center'}
+data_anova %>%
+  ggplot(aes(y = whoqol_total, fill = awareness_1)) +
+  geom_boxplot() +
+  facet_wrap(~dem_cluster, ncol = 6, labeller = as_labeller(cluster_names_n)) +
+  theme_classic(base_size = 9.5) +
+  theme(strip.text = element_text(face = 'bold'),
+        panel.grid.major.y = element_line(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()) +
+  labs(title = " ", 
+       y = "Quality of Life (WHOQOL)",
+       x = " ",
+       fill = "Fertility discussed?") +
+  scale_fill_discrete(breaks = c("0","1"),
+                      labels = c("No", "Yes"))
+
+```
+
+*NOTE*: Boxplots: black line is mean score, dots are outliers, red
+dashed line shows the clinical cut-off score
+
+<br> <br>
+
+### Feelings of depression and anxiety
+
+```{r echo=FALSE, warning=FALSE}
+phq_sum_alpha <- data %>%
+  dplyr::select(phq_sq__1, phq_sq__2, phq_sq__3, phq_sq__4) %>%
+  psych::alpha(check.keys = TRUE)
+
+phq_anxiety_alpha <- data %>%
+  dplyr::select(phq_sq__1, phq_sq__2) %>%
+  psych::alpha(check.keys = TRUE)
+
+phq_depression_alpha <- data %>%
+  dplyr::select(phq_sq__3, phq_sq__4) %>%
+  psych::alpha(check.keys = TRUE)
+
+```
+
+Feelings of depression and anxiety were measured using PHQ-4
+[@kroenke2009]. The mean overall score for the psychological distress
+was `r round(mean(data$phq_sum),2)` (*SD* =
+`r round(sd(data$phq_sum),2)`). The mean score for anxiety subscale was
+`r round(mean(data$phq_anxiety),2)` (*SD* =
+`r round(sd(data$phq_anxiety),2)`), and
+`r round(mean(data$phq_depression),2)` (*SD* =
+`r round(sd(data$phq_depression),2)`) for depression subscale. Internal
+consistency (Cronbach $\alpha$) for the overall score was
+`r round(phq_anxiety_alpha$total[[1]],2)`, and
+`r round(phq_sum_alpha$total[[1]],2)` and
+`r round(phq_depression_alpha$total[[1]],2)` for anxiety and depression,
+respectively.
+
+Literature suggests that a cut-off score of ≥ 3 on the anxiety subscale
+(known also as GAD-2) is reasonably sensitive in detecting generalized
+anxiety disorder (88%), panic disorder (76%), social anxiety disorder
+(70%), and posttraumatic stress disorder (59%) (REF Kroenke et al.,
+2007). Similarly, a cut-off score of ≥ 3 on the depression subscale
+(known also as PHQ-2) is 83% sensitive and 90% specific in detecting
+major depressive disorder (REF Kroenke et al., 2003).
+
+In our sample 59% (*N* = 195) of men and 44% (*N* = 154) of women
+endorsed scores of 6 or above indicating presence of psychological
+distress (results not shown). A higher proportion of participants who
+were in treatment reported clinical levels of psychological distress
+compared to those not in treatment (58% v. 37%, respectively). Table 3.2
+shows the mean values and proportions scoring in the clinical range
+based on their treatment status.
+
+#### Table 3.2: Mean values of psychological distress and proportion scoring above a clinical cut-off
+
+```{r echo=FALSE}
+table_distress <- data %>%
+  dplyr::select(med_currenttx, phq_sum, phq_depression, phq_anxiety) %>%
+  mutate(phq_sum_dummy = factor(case_when(phq_sum < 6 ~ "No",
+                                          phq_sum >= 6 ~ "Presence")),
+         phq_anxiety_dummy = factor(case_when(phq_anxiety < 3 ~ "No",
+                                              phq_anxiety >= 3 ~ "Presence")),
+         phq_depression_dummy = factor(case_when(phq_depression < 3 ~ "No",
+                                                 phq_depression >= 3 ~ "Presence")),
+         med_currenttx = case_when(med_currenttx == 0 ~ "Not in treatment",
+                                   med_currenttx == 1 ~ "In treatment"))
+  
+  
+label(table_distress$med_currenttx) <- "Treatment status"
+label(table_distress$phq_sum) <- "Total distress"
+label(table_distress$phq_depression) <- "PHQ-2"
+label(table_distress$phq_anxiety) <- "GAD-2"
+label(table_distress$phq_sum_dummy) <- "Total distress dummy"
+label(table_distress$phq_depression_dummy) <- "PHQ-2 dummy"
+label(table_distress$phq_anxiety_dummy) <- "GAD-2 dummy"
+
+
+table1(~ phq_sum + phq_depression + phq_anxiety + phq_sum_dummy + phq_depression_dummy + phq_anxiety_dummy | med_currenttx,
+       data = table_distress)
+```
+
+*NOTE*: GAD-2 = Generalized Anxiety Disorder scale with 2 items, PHQ-2 =
+Patient Health Questionnaire with 2 items. Dummy variables are
+dichotomized variables based on the proposed clinical cut-off rates of 3
+for individual subscale or 6 for the overall score. Presence indicates
+the potential presence of clinically relevant symptoms of depression and
+anxiety.
+
+```{r univariate distress, echo=FALSE, warning=FALSE, results=FALSE}
+distress_data <- data_anova %>%
+  filter(dem_sex %in% c(1:2)) %>%
+  mutate(phq_sum_dummy = factor(case_when(phq_sum < 6 ~ 0,
+                                          phq_sum >= 6 ~ 1)),
+         phq_anxiety_dummy = factor(case_when(phq_anxiety < 3 ~ 0,
+                                              phq_anxiety >= 3 ~1)),
+         phq_depression_dummy = factor(case_when(phq_depression < 3 ~ 0,
+                                                 phq_depression >= 3 ~ 1)))
+
+t.test(phq_sum ~ dem_sex, 
+       data = distress_data,
+       alternative = "two.sided", var.equal = FALSE)
+
+t.test(phq_sum ~ awareness_1, 
+       data = distress_data,
+       alternative = "two.sided", var.equal = FALSE)
+
+t.test(phq_sum ~ med_currenttx, 
+       data = distress_data,
+       alternative = "two.sided", var.equal = FALSE)
+
+lm_age_2 <- lm(phq_sum ~ med_cancerage,
+             data = distress_data)
+summary(lm_age_2)
+
+lm_age_3 <- lm(phq_sum ~ dem_age,
+             data = distress_data)
+summary(lm_age_3)
+```
+
+Overall levels of distressed were compared on several variables. Men in
+our sample reported significantly higher levels of distress compared to
+women (*M* = 5.87 for men, *M* = 4.92 for women, *t*(610) = 4.29, *p* \<
+0.001). Across the sample, psychological distress did not significantly
+differ based on whether or not fertility had been discussed (*t*(374.8)
+= 0.72, *p* = 0.468), however, psychological distress was significantly
+higher among individuals who were in treatment at the time of the study
+compared to those not in treatment (*M* = 5.91 in-treatment v. *M* =
+4.36 for out of treatment, *t*(420.5) = - 6.69, *p* \< 0.001). Neither
+age at diagnosis (*F*(1, 615) = 0.251, *p* = 0.617), nor age at the time
+of the study were associated with higher psychological distress (*F*(1,
+615) = 0.779, *p* = 0.378).
+
+A multilevel linear model, adjusting for age at diagnosis, sex, current
+treatment status was used to assess the psychological distress between
+country clusters and fertility preservation awareness. Eastern European
+countries B were the only country cluster where fertility discussions
+showed significant association with the level of psychological distress
+(*t* = -2.129, *p* = 0.0337). Table 3.2 contains the complete model
+parameters, while Figure 3.2 shows the results visually.
+
+#### Table 3.3: Adjusted linear model for psychological distress
+
+```{r anova 2, echo=FALSE, message=FALSE, warning=FALSE, results=TRUE}
+## Nested ANOVA for QOL
+nest_distress <- lm(phq_sum ~ dem_cluster + med_cancerage + med_currenttx + dem_sex +
+                 dem_cluster / awareness_1,
+                data = data_anova)
+
+summary(nest_distress)
+```
+
+```{r echo=FALSE, warning=FALSE, fig.width=8, fig.cap="Fig. 3.2: Psychological distress by country cluster and fertility discussions", fig.align='center'}
+data_anova %>%
+  ggplot(aes(y = phq_sum, fill = awareness_1)) +
+  geom_boxplot() +
+  facet_wrap(~dem_cluster, ncol = 6, labeller = as_labeller(cluster_names_n)) +
+  theme_classic(base_size = 9.5) +
+  theme(strip.text = element_text(face = 'bold'),
+        panel.grid.major.y = element_line(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()) +
+  labs(title = " ", 
+       y = "Psychological distress (PHQ-4)",
+       x = " ",
+       fill = "Fertility discussed?") +
+  scale_fill_discrete(breaks = c("0","1"),
+                      labels = c("No", "Yes"))
+
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# data %>%
+#   dplyr::select(dem_sex, dem_cluster, phq_sum) %>%
+#   filter(dem_sex %in% c(1:2)) %>%
+#   ggplot(aes(x = factor(dem_sex), y = phq_sum, fill = factor(dem_sex))) +
+#   geom_boxplot() +
+#   facet_wrap(~dem_cluster, labeller = as_labeller(cluster_names)) +
+#   theme_classic(base_size = 11) +
+#   theme(strip.text = element_text(face = 'bold'),
+#         panel.grid.major.y = element_line()) +
+#   labs(y = "Depression",
+#        x = "Sex",
+#        fill = "Sex") +
+#   geom_hline(yintercept = 6, 
+#              linetype="dashed", 
+#              color = "red", size = 0.5) +
+#   scale_fill_discrete(labels = c("Women", "Men"))
+```
+
+### Perceived changes in quality of life and well-being since the time of diagnosis
+
+Participants were asked to think and reflect about their life with
+illness and to report how their feelings of anxiety, depression, and
+quality of life have changed since the diagnosis. In particular, we
+looked at those who have already completed treatment (*N* = 246).
+Anxiety has worsened for 39%, depression for 35% while quality of life
+improved for 33%. See Figure 3.3 for a complete breakdown.
+
+```{r echo=FALSE, warning=FALSE, fig.width=6, fig.height=5, fig.cap="Fig. 3.3: Perceived change in anxiety, depression, and quality of life since diagnosis"}
+data %>%
+  filter(med_currenttx == 0) %>%
+  dplyr::select(contains("qol_change")) %>%
+  rename(`Quality of life` = qol_change_sq__1, 
+         Depression = qol_change_sq__2,
+         Anxiety = qol_change_sq__3) %>%
+  pivot_longer(cols = c(`Quality of life`, Depression, Anxiety),
+               names_to = "construct",
+               values_to = "response") %>%
+  group_by(construct, response) %>%
+  count() %>%
+  group_by(construct) %>%
+  mutate(sum = sum(n),
+         prop = n/sum*100,
+         prop = round(prop, 1)) %>%
+  ggplot(aes(x = factor(response), y = prop, fill = factor(response))) +
+  geom_col() +
+  facet_wrap(~construct, ncol = 3) + 
+  geom_text(aes(label = paste0(prop,"%"), y = prop + 3)) +
+  labs(title = " ", 
+       y = "Proportion (%)",
+       x = " ") + 
+  ylim(0, 50) +
+  theme_classic(base_size = 11) +
+  theme(legend.position = "none",
+        strip.text = element_text(face = 'bold'),
+        panel.grid.major.x = element_line(),
+        ) +
+  scale_fill_viridis_d() +
+  scale_x_discrete(breaks = c("0","1", "2"),
+                   labels = c("It \nworsened",
+                              "Stayed \nsame",
+                              "It \nimproved"))
+```
+
+Furthermore, participants were asked if and to what extent
+fertility-related worries or problems impact their feelings of anxiety,
+depression, quality of life, and romantic relationships.
+Fertility-related worries and concerns greatly impacted the feelings of
+anxiety and depression among 27% of participants, while 24% reported
+negative impact on their romantic relationship, and 17% reported
+negative impact on their quality of life. See Figure 3.4 for a complete
+breakdown.
+
+```{r echo=FALSE, warning=FALSE, fig.cap="Fig. 3.4: Impact of fertility-related concerns on anxiety, depression, quality of life, and romantic relationships"}
+data %>%
+  dplyr::select(contains("qol_fertility")) %>%
+  rename(`Quality of life` = qol_fertility_sq__1, 
+         Anxiety = qol_fertility_sq__2,
+         Depression = qol_fertility_sq__3,
+         `Romantic relationships` = qol_fertility_sq__4) %>%
+  pivot_longer(cols = c(`Quality of life`, Anxiety, Depression, `Romantic relationships`),
+               names_to = "construct",
+               values_to = "response") %>%
+  group_by(construct, response) %>%
+  count() %>%
+  group_by(construct) %>%
+  mutate(sum = sum(n),
+         prop = n/sum*100,
+         prop = round(prop, 1)) %>%
+  ggplot(aes(x = factor(response), y = prop, fill = factor(response))) +
+  geom_col() +
+  facet_wrap(~construct, ncol = 2) + 
+  geom_text(aes(label = paste0(prop,"%"), y = prop + 4)) +
+  labs(title = " ", 
+       y = "Proportion (%)",
+       x = " ") + 
+  ylim(0, 65) +
+  theme_classic(base_size = 11) +
+  theme(legend.position = "none",
+        strip.text = element_text(face = 'bold'),
+        panel.grid.major.x = element_line(),
+        ) +
+  scale_fill_viridis_d() +
+  scale_x_discrete(breaks = c("0","1", "2"),
+                   labels = c("Not at all",
+                              "Somewhat",
+                              "To a great extent"))
+
+```
+
+## Discussion: Quality of life and well-being
+
+Quality of life and psychological distress are important concepts in the
+field of AYA psycho-social oncology and a top priority for research as
+reported by patients (LINDT). The results based on our survey indicate
+that close to 1 in 2 respondents report some form of clinically relevant
+psychological distress. In particular we see that both quality of life
+and psychological distress are more impacted among individuals who are
+currently in treatment. While the level of distress may be normal for
+young people who are in treatment, over a third of young people who have
+already completed treatment continues to report increased levels of
+anxiety and depressive symptomatology. Prolonged and increased distress
+has been reported in the literature and in particular, feelings of
+anxiety tend to be more common than symptoms of depression (kosir). The
+aim of our survey was to not to quantify or identify those who are
+clinically depressed or anxious, nevertheless, our findings lend further
+insight into the nature of psychological distress experienced by AYAs
+with lived experience.
+
+Receiving a diagnosis of cancer at an early age is particularly
+challenging due to the many developmental processes and milestones that
+young people are trying to achieve. Illness can compromise many aspects
+of one's life, from romantic relationships (REF) to school and
+vocational attainment (REF), both short- and long-term. Among the most
+altering late-effects of cancer treatment are fertility-related
+problems. Fertility can thus be intricately linked with one's quality of
+life and well-being. In order to explore this relationship we ran
+multivariate analyses that clustered individuals based on the health
+care systems and looked for differences in quality of life and
+psychological distress. In both cases we've seen a significant
+difference in Eastern European countries B (Croatia, Czechia, Estonia,
+Poland, Slovenia). Those who reported having discussion about fertility
+had significantly higher quality of life, and significantly lower level
+of psychological distress, controlling for treatment status, age at
+diagnosis and sex. Within the same country cluster it is also where we
+observed that the majority did not opt to preserve fertility (see Fig.
+2.5) so that may be a potential mediator of the effect we observe in
+this clus[@lambertini2020]ter but not the others.
+
+An interesting finding was that we observed significantly higher levels
+of distress in men. Most forms of psychological distress tend to show
+female excess (REF), however, most studies also have a much higher
+participation from women. The difference observed here will need to be
+further explored in the future research.
+
+## Conclusions
+
+The purpose of this survey was to capture novel data on
+fertility-related awareness, access, and preferences, as well as to
+explore associations between fertility and quality of life and mental
+health in a diverse sample of childhood, adolescent, and young adult
+cancer (CAYA) patients and survivors.
+
+Compromised fertility in young people is one of the most life-altering
+late effect of cancer, affecting domains from sexuality and body image
+to self-esteem and quality of life [@logan2019b]. While there exist
+evidence-based international guidelines for fertility preservation
+[@lambertini2020], there is no standardized way of implementing these
+guidelines within and between countries across wider Europe. Moreover,
+many guidelines continue to be developed without adequate participation
+of patients and their caretakers. As such these guidelines and
+recommendations might not always be acceptable or sensitive solutions to
+the unique young people's needs.
+
+Significant cancer-related fertility inequalities exist among young
+cancer patients and survivors between countries and healthcare systems
+within and beyond Europe. Accessible fertility preservation programs
+should become an integral part of cancer rehabilitation for (C)AYAs and
+should actively include them in the development of any novel guidelines.
+AYAs' mental health and quality of life may be compromised by
+fertility-related distress and should be monitored throughout the cancer
+continuum.
+
+\newpage
+
+## Strengths, limitations and future directions
+
+Our study captures a relatively large sample of CAYA participants and
+with targeted survey promotion we achieved an almost even participation
+between sexes. Despite these advantages, the sample is self-selected,
+highly heterogeneous, and relies on retrospective and self-reported
+data, which limits generalizability. Moreover, the survey was
+cross-sectional in nature and conducted exclusively in English, which
+might have made it less accessible to non-English speaking populations.
+
+Some of the analyses went beyond what was originally pre-registered.
+Despite the limited statistical power to perform further breakdowns of
+our sample, our results provide meaningful insights and important
+directions for future work. Going forward, the studies should try to
+follow the same individuals longitudinally and try to capture the
+described outcomes from the early diagnosis through to survivorship. We
+have identified several important gaps that can be addressed both
+clinically and through research. Namely, timely provision of reliable
+informational resources about fertility should become the norm across
+all countries. Research, particularly in non-Western parts of Europe
+should employ translated and validated measures of constructs such as
+quality of life and psychological distress. Further identification of
+barriers to access is needed.
+
+\newpage
+
+# Bibliography
