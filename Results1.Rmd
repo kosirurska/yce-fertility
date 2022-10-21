@@ -896,7 +896,8 @@ oncologists, participants reported that psychologists are important too.
 See Figure 2.5.
 
 ## NB - this figure will be re-done to make it easier to read/interpret the results
-```{r echo=FALSE, warning=FALSE, message=FALSE, fig.width=9, fig.height=8, fig.align='center', fig.cap="Fig. 2.6: Importance of different people involved in the decision-making process"}
+```{r echo=FALSE, warning=FALSE, message=FALSE, fig.width=16, fig.height=7, fig.align='center', fig.cap="Fig. 2.6: Importance of different people involved in the decision-making process"}
+
 data %>%
   dplyr::select(contains("preference_decision")) %>%
   pivot_longer(cols = c(preference_decision_sq__1:preference_decision_sq__8),
@@ -914,36 +915,45 @@ data %>%
   count() %>%
   filter(importance != 999) %>%
   group_by(party) %>%
-  mutate(sum= sum(n),
+  mutate(sum = sum(n),
          prop = n/sum,
          prop = round(prop, 2)*100,
-         # prop2 = paste0(prop, "%")
-         ) %>%
-  mutate(importance2 = case_when(importance == 0|importance == 1 | importance == 2 ~ 0,
-                                 importance == 3| importance == 4 ~ 1)) %>%
-  group_by(importance2, party) %>%
-  mutate(sum_n = sum(n),
-         start = 0) %>%
-  ungroup() %>%
-  group_by(party) %>%
-  mutate(start_adj = start - min(sum_n),
-         end_adj = start + max(sum_n),
-         item = as.numeric(parse_number(party)),
-         answer = as.factor(importance)) %>%
-  ungroup() %>%
-  ggplot(aes(x = party, y = prop, fill = factor(-importance))) +
-  geom_col() +
-  coord_flip() +
+         prop_cum = cumsum(prop)) %>%
+  dplyr::select(-sum) %>%
+  mutate(start = -prop_cum[importance == 2],
+         end_adj = start + prop_cum, 
+         start_adj = end_adj - prop,
+         answer = as.factor(importance),
+         item = as.numeric(parse_number(party))) %>%
+  ggplot() +
+  geom_rect(aes(x = party,
+                ymin = start_adj,
+                ymax = end_adj,
+                xmin = item + 0.4,
+                xmax = item - 0.4,
+                fill = answer)) +
+  coord_flip() + 
+  geom_hline(yintercept = 0, 
+             linetype = "dashed",
+             color = "black", size = 0.5) +
+  geom_text(aes(x = party, y = start_adj + 2, label = paste0(prop, "%")), size = 3.5, face = "bold") +
   labs(title = " ", 
-       y = "Proportion (%)",
-       x = " ") +
-  theme_classic(base_size = 11) +
-  scale_fill_discrete(breaks = c("0","-1", "-2", "-3", "-4"),
+       y = "Proportion endorsing a response (%)",
+       x = " ",
+       fill = "Response",
+       caption = c("Least important", "Most important")) +
+  theme_classic(base_size = 13) +
+    theme(axis.ticks.x = element_blank(),
+          plot.caption = element_text(hjust = c(0,1))) +
+  scale_fill_brewer(palette = "Blues",
+                    breaks = c("0","1", "2", "3", "4"),
                    labels = c("Not \nimportant",
                               "Slightly \nimportant",
                               "Fairly \nimportant",
                               "Important",
-                              "Very \nimportant"))
+                              "Very \nimportant")) +
+  scale_y_continuous(breaks = NULL)
+
 ```
 
 ## Discussion: Fertility preservation awareness, access, satisfaction and preferences
