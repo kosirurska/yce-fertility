@@ -1,0 +1,41 @@
+---
+title: "PRIZE DRAW for the YCE Fertility Survey"
+output: pdf_document
+date: "Updated: `r Sys.Date()`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+
+## Selection of YCE Fertility participants for the prizes
+
+All participants who completed the the online survey on Fertility Preservation run by YCE were invited to follow a separate link and provide their contact if they wished to be included in the prize draw for 1 of the 20 gift vouchers valued at 25 euros.
+
+This is the replicable code on how the winners were selected.
+Total number of eligible emails submitted was 591, for odds of `r round(20/591, 2)`.
+
+```{r}
+prize_raw_data <- read_csv("prize_draw.csv") %>% # raw data extracted for the prize draw
+  select_all(tolower) %>%
+  rename_with(~gsub("0", "_", .x, fixed = TRUE)) %>% # this is just to clean up the file
+  rename_with(~gsub("[", "_", .x, fixed = TRUE)) %>%
+  rename_with(~gsub("]", "", .x, fixed = TRUE)) %>%
+  filter(prize_draw == 1) # this is to  filter out those who consented
+
+emails <- prize_raw_data %>% # subset and filter only the variable of interest i.e. email
+  dplyr::select(prize_email)
+
+set.seed(12345) #set seed to make this reproducible
+
+prize <- sample_n(emails, 20) # randomly select the 20 lucky winners
+
+write_csv(prize, "~/Desktop/prize_emails.csv")
+```
+
+Winners will be contacted via email to confirm their acceptance of the prize.
+Upon that, YCE will provide them with a digital voucher to their preferred email address.
+
+If no response is received after 2 weeks, YCE will conduct another draw for the remaining prizes.
